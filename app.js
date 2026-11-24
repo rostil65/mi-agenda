@@ -168,6 +168,7 @@
     Object.keys(D).forEach(function (id) { if (!seen[id]) delete D[id]; });
     await ensureFamChat();
     avisarNuevos();
+    await mantenimiento();
   }
   async function ensureFamChat() {
     var fam = famChat(); if (!fam || !SK[fam.id]) return;
@@ -180,7 +181,7 @@
 
   /* ================= consultas ================= */
   function item(id) { var x = D[id]; if (!x) return null; var sh = x.rec.share ? db.records[x.rec.share] : null; return { id: id, d: x.data, rec: x.rec, sh: sh && !sh.del ? sh : null }; }
-  function privados(k) { return Object.keys(D).map(item).filter(function (it) { return it && !it.sh && it.d.k === k && it.rec.owner === ME.id; }); }
+  function privados(k) { return Object.keys(D).map(item).filter(function (it) { return it && !it.sh && it.d.k === k && it.rec.owner === ME.id && !it.d.papelera; }); }
   function aceptado(sh) { if (sh.owner === ME.id) return true; var a = acc(sh.id, ME.id); return !!(a && a.estado === 'aceptado'); }
   function compartidos(kind) {
     return recs('share').filter(function (s) { return s.kind === kind && SK[s.id] && aceptado(s); }).map(function (s) { return item(s.root); }).filter(Boolean);
@@ -191,8 +192,9 @@
   }
   function porRama(d) { var r = rama(); return r === 'todo' || !d.rama || d.rama === 'ambas' || d.rama === r; }
   function todos(k) { return privados(k).concat(['nota', 'lista', 'evento'].indexOf(k) >= 0 ? compartidos(k) : []); }
-  function cals() { return privados('cal').sort(function (a, b) { return (a.d.orden || 0) - (b.d.orden || 0) || a.d.nombre.localeCompare(b.d.nombre); }); }
-  function calVisible(c) { return c && c.d.activo !== false && porRama(c.d); }
+  var RANGO_CAL = { normal: 0, importado: 1, 'auto-lab': 2, 'auto-ro': 3, 'auto-ort': 4, cumple: 9 };
+  function cals() { return privados('cal').sort(function (a, b) { return (RANGO_CAL[a.d.tipo] || 0) - (RANGO_CAL[b.d.tipo] || 0) || (a.d.orden || 0) - (b.d.orden || 0) || a.d.nombre.localeCompare(b.d.nombre); }); }
+  function calVisible(c) { return !!(c && c.d.activo !== false); } /* 3.11: los calendarios son comunes a las dos ramas */
   function calDe(ev) {
     var cid = ev.sh ? ((acc(ev.sh.id, ME.id) || {}).cal) : ev.d.cal;
     var c = cid && item(cid);
@@ -224,11 +226,12 @@
   }
   function delDia(ds) {
     var out = [];
+    if (!S.verPasados && ds < hoyStr()) return out; /* cambio 4: lo pasado se oculta */
     todos('evento').forEach(function (it) { var c = calDe(it); if (calVisible(c) && ocurre(it.d, ds)) out.push({ it: it, c: c }); });
     var cc = cals().filter(function (c) { return c.d.tipo === 'cumple' && calVisible(c); })[0];
     if (cc) {
       var md = ds.slice(8, 10) + '-' + ds.slice(5, 7);
-      privados('contacto').forEach(function (k) { if (k.d.cumple === md) out.push({ it: { id: k.id, d: { titulo: 'Cumpleaños de ' + k.d.nombre, aviso: '1440', fecha: ds }, virtual: true }, c: cc }); });
+      privados('contacto').forEach(function (k) { if (k.d.cumple === md) out.push({ it: { id: k.id, d: { titulo: 'Cumpleaños de ' + nombreC(k.d), aviso: '1440', fecha: ds }, virtual: true }, c: cc }); });
     }
     return out.sort(function (x, y) { return (x.it.d.hora || '').localeCompare(y.it.d.hora || ''); });
   }
@@ -251,7 +254,7 @@
     }).join('') + '</div>';
   }
   V.inicio = function () {
-    var h = bandeja();
+    var h = avisoLaborales() + bandeja();
     var nm = noLeidos();
     if (nm) h += '<div class="note click" data-a="ir" data-v="mensajes">Tienes ' + nm + ' mensaje' + (nm > 1 ? 's' : '') + ' sin leer.</div>';
     h += '<h2>Próximos 14 días</h2><div class="card list">';
@@ -266,9 +269,9 @@
   V.calendario = function () {
     var m = S.month, y = m.getFullYear(), mo = m.getMonth();
     var h = '<div class="calhead"><button class="btn" data-a="mes" data-v="-1" aria-label="Mes anterior">‹</button><b>' + MESES[mo][0].toUpperCase() + MESES[mo].slice(1) + ' ' + y + '</b><button class="btn" data-a="mes" data-v="1" aria-label="Mes siguiente">›</button></div>';
-    h += '<div class="chips">' + cals().filter(function (c) { return porRama(c.d); }).map(function (c) {
+    h += '<div class="chips">' + cals().map(function (c) {
       return '<button class="chip' + (c.d.activo === false ? ' off' : '') + '" data-a="calActivo" data-id="' + c.id + '" aria-pressed="' + (c.d.activo !== false) + '"><span class="dot" style="background:' + c.d.color + '"></span>' + esc(c.d.nombre) + '</button>';
-    }).join('') + '<button class="chip" data-a="ir" data-v="calendarios">Gestionar calendarios</button></div><div class="card"><div class="grid">';
+    }).join('') + '<button class="chip" data-a="ir" data-v="calendarios">Gestionar calendarios</button><button class="chip" data-a="verPasados" aria-pressed="' + !!S.verPasados + '">' + (S.verPasados ? 'Ocultar eventos pasados' : 'Ver eventos pasados') + '</button></div>' + (S.verPasados ? '<p class="muted">Mostrando también los eventos pasados hasta que salgas del calendario. Para reactivar uno, ábrelo y cámbiale la fecha y la hora.</p>' : '') + '<div class="card"><div class="grid">';
     ['L', 'M', 'X', 'J', 'V', 'S', 'D'].forEach(function (w) { h += '<span class="wd">' + w + '</span>'; });
     var start = new Date(y, mo, 1 - ((new Date(y, mo, 1).getDay() + 6) % 7));
     for (var i = 0; i < 42; i++) {
@@ -281,14 +284,17 @@
     return h + '</div></div><h2>' + fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + '</h2><div class="card list">' + (sl.length ? sl.map(function (o) { return itemEvento(o); }).join('') : '<div class="empty">Sin eventos este día.</div>') + '</div>';
   };
   V.calendarios = function () {
-    var h = '<div class="btns"><button class="btn" data-a="ir" data-v="calendario">‹ Calendario</button><button class="btn pri" data-a="nuevoCal">Nuevo calendario</button></div><h2>Mis calendarios</h2><div class="card list">';
+    var h = '<div class="btns"><button class="btn" data-a="ir" data-v="calendario">‹ Calendario</button><button class="btn pri" data-a="nuevoCal">Nuevo calendario</button></div><h2>Mis calendarios</h2><p class="muted">Son los mismos en las ramas Personal y Trabajo. Toca uno para cambiarle el nombre o el color, o para borrarlo.</p><div class="card list">';
     h += cals().map(function (c) {
       var n = privados('evento').filter(function (e) { return e.d.cal === c.id; }).length;
-      return '<div class="item"><span class="dot" style="background:' + c.d.color + '"></span><span class="tx click" data-a="editar" data-id="' + c.id + '"><b>' + esc(c.d.nombre) + '</b><small>' + ({ personal: 'Personal', trabajo: 'Trabajo', ambas: 'Ambas ramas' }[c.d.rama] || '') + (c.d.tipo === 'cumple' ? ' · cumpleaños de tus contactos' : ' · ' + n + ' eventos') + '</small></span><button class="btn sm" data-a="calActivo" data-id="' + c.id + '">' + (c.d.activo === false ? 'Activar' : 'Desactivar') + '</button></div>';
+      return '<div class="item"><span class="dot" style="background:' + c.d.color + '"></span><span class="tx click" data-a="editar" data-id="' + c.id + '"><b>' + esc(c.d.nombre) + '</b><small>' + (c.d.tipo === 'cumple' ? 'Cumpleaños de tus contactos' : n + ' eventos') + (/^auto-/.test(c.d.tipo || '') ? ' · se actualiza cada diciembre' : '') + '</small></span><button class="btn sm" data-a="calActivo" data-id="' + c.id + '">' + (c.d.activo === false ? 'Mostrar' : 'Ocultar') + '</button></div>';
     }).join('') + '</div>';
-    h += '<h2>Añadir un calendario público</h2><div class="card" style="padding:14px"><p class="muted">Se copia como calendario tuyo; luego puedes cambiarle nombre y color o borrarlo. Comprueba las fechas oficiales.</p><div class="btns">' +
-      window.CAL_PUBLICOS.map(function (p) { return '<button class="btn" data-a="calPublico" data-v="' + p.id + '"><span class="dot" style="background:' + p.color + '"></span>' + esc(p.nombre) + '</button>'; }).join('') + '</div></div>';
-    h += '<h2>Importar</h2><div class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px"><span class="muted">Archivos .ics de Google Calendar (Configuración › Importar y exportar › Exportar) u otros. Puedes elegir varios: cada uno será un calendario.</span><div class="btns"><button class="btn" data-a="importar" data-v="ics">Importar archivos .ics</button></div>' +
+    var auto = pref().festivosAuto, y = today.getFullYear();
+    h += '<h2>Festivos automáticos</h2><div class="card pad col">' + (auto
+      ? '<p class="muted">Activados: FIESTAS LABORALES (España + Comunidad de Madrid), Festivos Rumanía y Fiestas ortodoxas. Cada diciembre se añade el año siguiente; lo que añadas o corrijas a mano nunca se cambia.</p><div class="row2"><label class="f">Año<select id="festYear"><option>' + y + '</option><option' + (today.getMonth() === 11 ? ' selected' : '') + '>' + (y + 1) + '</option></select></label><div class="btns" style="align-self:end"><button class="btn" data-a="actualizarFestivosYa">Actualizar ahora</button></div></div>'
+      : '<p class="muted">Crea tres calendarios que se rellenan solos: FIESTAS LABORALES (nacionales de España y Comunidad de Madrid), Festivos Rumanía y Fiestas ortodoxas.</p><div class="btns"><button class="btn pri" data-a="activarFestivos">Activar festivos automáticos</button></div>') +
+      '<p class="muted">Festivos de Alcalá de Henares y puentes de tu empresa:</p><div class="btns"><button class="btn" data-a="marcarAnio" data-v="' + (today.getMonth() === 11 ? y + 1 : y) + '">Opción A: añadir festivos del año</button><button class="btn" data-a="opcionB">Opción B: importar el .ics que te haga Claude</button></div></div>';
+    h += '<h2>Importar</h2><div class="card pad col"><span class="muted">Archivos .ics de Google Calendar (Configuración › Importar y exportar › Exportar) u otros. Solo se importan los eventos de hoy en adelante (y los que se repiten). Antes te pregunto en qué calendario guardarlos y qué hacer con los duplicados.</span><div class="btns"><button class="btn" data-a="importar" data-v="ics">Importar archivos .ics</button></div>' +
       '<label class="f">O la dirección pública de un calendario (.ics)<input id="icsUrl" type="url" placeholder="https://…/basic.ics"></label><div class="btns"><button class="btn" data-a="icsUrl">Importar desde dirección</button></div><span class="hint">Muchos servidores (Google incluido) no dejan leerlos desde una web; si falla, descarga el archivo y usa el botón de arriba.</span></div>';
     return h;
   };
@@ -299,25 +305,10 @@
   }
   V.tareas = function () {
     var f = S.tfiltro, l = privados('tarea').filter(function (t) { return porRama(t.d) && (f === 'todas' || (f === 'pend' ? !t.d.hecho : t.d.hecho)); }).sort(porVence);
-    return '<div class="chips">' + [['pend', 'Pendientes'], ['hechas', 'Hechas'], ['todas', 'Todas']].map(function (x) { return '<button class="chip' + (f === x[0] ? '' : ' off') + '" data-a="tfiltro" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') +
+    return '<div class="chips">' + [['pend', 'Pendientes'], ['hechas', 'Hechas (ocultas)'], ['todas', 'Todas']].map(function (x) { return '<button class="chip' + (f === x[0] ? '' : ' off') + '" data-a="tfiltro" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') +
       '</div><div class="card list">' + (l.length ? l.map(itemTarea).join('') : '<div class="empty">No hay tareas aquí.</div>') + '</div>';
   };
   function tel(t) { return String(t || '').replace(/[^\d+]/g, ''); }
-  V.contactos = function () {
-    var l = privados('contacto').filter(function (k) { return porRama(k.d); }).sort(function (a, b) { return a.d.nombre.localeCompare(b.d.nombre); });
-    var h = '<div class="btns"><button class="btn" data-a="importar" data-v="contactos">Importar de Google (CSV o vCard)</button></div>', g = {};
-    l.forEach(function (k) { var n = k.d.grupo || 'Sin grupo'; (g[n] = g[n] || []).push(k); });
-    var gk = Object.keys(g).sort();
-    if (!gk.length) return h + '<div class="card empty">Aún no tienes contactos. Pulsa + o importa tu archivo de Google Contactos.</div>';
-    gk.forEach(function (n) {
-      h += '<div class="grp">' + esc(n) + ' · ' + g[n].length + '</div><div class="card list">' + g[n].map(function (k) {
-        var tl = tel(k.d.telefono), wa = tl.replace(/^\+/, '').replace(/^00/, '');
-        return '<div class="item wrap"><span class="tx click" data-a="editar" data-id="' + k.id + '"><b>' + esc(k.d.nombre) + '</b><small>' + esc([k.d.telefono, k.d.email].filter(Boolean).join(' · ')) + '</small></span>' +
-          (tl ? '<a class="btn sm" href="tel:' + tl + '">Llamar</a>' + (wa.length > 8 ? '<a class="btn sm" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') : '') + (k.d.email ? '<a class="btn sm" href="mailto:' + esc(k.d.email) + '">Correo</a>' : '') + '</div>';
-      }).join('') + '</div>';
-    });
-    return h;
-  };
   V.notas = function () {
     var l = todos('nota').filter(function (n) { return porRama(n.d); }).sort(function (a, b) { return b.rec.upd - a.rec.upd; });
     return bandeja() + '<div class="btns"><a class="btn" href="https://www.onenote.com/notebooks" target="_blank" rel="noopener">Abrir OneNote</a><a class="btn" href="https://drive.google.com" target="_blank" rel="noopener">Abrir Google Drive</a></div><div class="card list">' +
@@ -338,7 +329,7 @@
     });
     return h;
   };
-  function itemsDe(listaId) { return Object.keys(D).map(item).filter(function (it) { return it && it.d.k === 'item' && it.d.lista === listaId; }); }
+  function itemsDe(listaId) { return Object.keys(D).map(item).filter(function (it) { return it && it.d.k === 'item' && it.d.lista === listaId && !it.d.papelera; }); }
   V.compras = function () {
     var L = S.lista && item(S.lista);
     if (L) {
@@ -408,6 +399,8 @@
       '<div class="btns"><button class="btn" data-a="miColor">Cambiar mi color</button><button class="btn" data-a="cambiarPw">Cambiar contraseña</button><button class="btn" data-a="cambiarUsuario">Cambiar de usuario</button></div></div>';
     h += '<h2>Sincronización</h2>' + conexionHTML();
     h += '<h2>Mis calendarios</h2><div class="card pad"><div class="btns"><button class="btn" data-a="ir" data-v="calendarios">Crear, editar, importar o borrar calendarios</button></div></div>';
+    var np = enPapelera().length, pl = pref().plazoPapelera || 90;
+    h += '<h2>Papelera</h2><div class="card pad col"><div class="btns"><button class="btn" data-a="ir" data-v="papelera">Abrir papelera (' + np + ')</button></div><label class="f">Eliminar definitivamente lo que lleve en la papelera más de<select id="plazoSel">' + [[30, '1 mes'], [90, '3 meses'], [365, '1 año']].map(function (o) { return '<option value="' + o[0] + '"' + (pl === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label></div>';
     h += '<h2>Importar contactos</h2><div class="card pad"><div class="btns"><button class="btn" data-a="importar" data-v="contactos">Importar de Google (CSV o vCard)</button></div></div>';
     h += '<h2>Sugerencias y solicitudes</h2><div class="card pad"><p class="muted">Pide cambios o mejoras de la app. Le llegan al administrador.</p><form data-sug="1" class="col"><label class="f">Tu sugerencia<textarea id="sugT" placeholder="Me gustaría que…"></textarea></label><button class="btn pri" type="submit">Enviar sugerencia</button></form>' + misSugerencias() + '</div>';
     h += '<h2>Avisos</h2><div class="card pad"><span class="muted">La app avisa mientras está abierta. Para alarmas seguras, abre un evento y pulsa "Añadir al calendario del móvil".</span><div class="btns"><button class="btn" data-a="permisoAvisos">Permitir notificaciones</button></div></div>';
@@ -449,11 +442,11 @@
     var tipos = { evento: 'Calendario', tarea: 'Tareas', contacto: 'Contactos', nota: 'Notas', acceso: 'Accesos', lista: 'Compras', item: 'Artículos de listas', msg: 'Mensajes' };
     var h = '', total = 0;
     Object.keys(tipos).forEach(function (k) {
-      var l = Object.keys(D).map(item).filter(function (it) { return it && it.d.k === k && (k !== 'evento' && k !== 'nota' && k !== 'lista' || !it.sh || aceptado(it.sh)) && JSON.stringify(it.d).toLowerCase().indexOf(q) >= 0; });
+      var l = Object.keys(D).map(item).filter(function (it) { return it && it.d.k === k && !it.d.papelera && (k !== 'evento' && k !== 'nota' && k !== 'lista' || !it.sh || aceptado(it.sh)) && JSON.stringify(it.d).toLowerCase().indexOf(q) >= 0; });
       if (!l.length) return;
       total += l.length;
       h += '<div class="grp">' + tipos[k] + ' · ' + l.length + '</div><div class="card list">' + l.slice(0, 30).map(function (it) {
-        var t = it.d.titulo || it.d.nombre || it.d.t || '', sub = it.d.fecha ? fechaLarga(it.d.fecha) : (it.d.telefono || it.d.email || '');
+        var t = k === 'contacto' ? nombreC(it.d) : (it.d.titulo || it.d.nombre || it.d.t || ''), pasado = k === 'evento' && it.d.fecha < hoyStr() && (!it.d.repetir || it.d.repetir === 'no'), sub = it.d.fecha ? fechaLarga(it.d.fecha) + (pasado ? ' · pasado' : '') : (k === 'contacto' ? [telsDe(it.d)[0] && telsDe(it.d)[0].v, mailsDe(it.d)[0] && mailsDe(it.d)[0].v].filter(Boolean).join(' · ') : '');
         var act = k === 'item' ? 'data-a="abrirLista" data-id="' + it.d.lista + '"' : k === 'lista' ? 'data-a="abrirLista" data-id="' + it.id + '"' : k === 'msg' ? '' : 'data-a="editar" data-id="' + it.id + '"';
         return '<div class="item click" ' + act + '><span class="tx"><b>' + esc(t.slice(0, 80)) + '</b><small>' + esc(sub) + '</small></span></div>';
       }).join('') + '</div>';
@@ -502,11 +495,11 @@
     var nm = noLeidos(), np = pendientes().length;
     $('#nav').innerHTML = mods.map(function (m) {
       var n = m[0] === 'mensajes' ? nm : m[0] === 'inicio' ? np : 0;
-      var on = (S.view === m[0] || (S.view === 'calendarios' && m[0] === 'calendario')) && !S.q;
+      var on = (S.view === m[0] || ((S.view === 'calendarios' || S.view === 'marcar') && m[0] === 'calendario') || ((S.view === 'duplicados' || S.view === 'revisarNombres') && m[0] === 'contactos') || (S.view === 'papelera' && m[0] === 'ajustes')) && !S.q;
       return '<a href="#' + m[0] + '" class="' + (on ? 'on' : '') + '">' + svg(m[0]) + '<span>' + m[1] + '</span>' + (n ? '<i class="nb">' + n + '</i>' : '') + '</a>';
     }).join('');
     $('#main').innerHTML = S.q ? buscar(S.q) : V[S.view]();
-    $('#fab').hidden = ['ajustes', 'admin', 'mensajes', 'calendarios'].indexOf(S.view) >= 0 && !S.q;
+    $('#fab').hidden = ['ajustes', 'admin', 'mensajes', 'calendarios', 'papelera', 'duplicados', 'marcar', 'revisarNombres'].indexOf(S.view) >= 0 && !S.q;
     if (S.view === 'mensajes' && S.chat) { var ch = document.querySelector('.chat'); if (ch) ch.scrollTop = ch.scrollHeight; }
   }
 
@@ -519,11 +512,10 @@
       ['aviso', 'Aviso', [['', 'Sin aviso'], ['0', 'A la hora'], ['10', '10 min antes'], ['30', '30 min antes'], ['60', '1 hora antes'], ['720', '12 horas antes'], ['1440', '1 día antes'], ['4320', '3 días antes']]],
       ['lugar', 'Lugar', 'text'], ['notas', 'Notas', 'textarea']]],
     tarea: ['Tarea', [['titulo', 'Tarea', 'text', 1], ['vence', 'Fecha límite', 'date'], ['prioridad', 'Prioridad', [['media', 'Media'], ['alta', 'Alta'], ['baja', 'Baja']]], ['rama', 'Rama', RAMAS], ['proyecto', 'Proyecto o categoría', 'text'], ['notas', 'Notas', 'textarea'], ['hecho', 'Hecha', 'checkbox']]],
-    contacto: ['Contacto', [['nombre', 'Nombre', 'text', 1], ['telefono', 'Teléfono (con prefijo, ej. +34)', 'tel'], ['email', 'Correo', 'email'], ['grupo', 'Grupo (Familia, Médicos…)', 'text'], ['cumple', 'Cumpleaños (DD-MM)', 'text'], ['rama', 'Rama', RAMAS], ['notas', 'Notas', 'textarea']]],
     nota: ['Nota', [['titulo', 'Título', 'text', 1], ['texto', 'Texto', 'textarea'], ['enlace', 'Enlace (OneNote, Drive…)', 'url'], ['etiquetas', 'Etiquetas', 'text'], ['rama', 'Rama', RAMAS]]],
     acceso: ['Acceso', [['nombre', 'Nombre (ej. Mi banco)', 'text', 1], ['cat', 'Tipo', TIPOS_ACCESO.map(function (t) { return [t, t]; })], ['enlace', 'Enlace o app (https://…, tel:…)', 'text'], ['usuario', 'Usuario (nunca la contraseña)', 'text'], ['ultimos4', 'Tarjeta: solo 4 últimos dígitos', 'text'], ['rama', 'Rama', RAMAS], ['notas', 'Notas', 'textarea']]],
     lista: ['Lista de compra', [['nombre', 'Nombre de la lista', 'text', 1], ['tienda', 'Tienda', 'text'], ['rama', 'Rama', RAMAS]]],
-    cal: ['Calendario', [['nombre', 'Nombre', 'text', 1], ['color', 'Color', 'color'], ['rama', 'Rama', RAMAS], ['activo', 'Activo (se muestra)', 'checkbox']]]
+    cal: ['Calendario', [['nombre', 'Nombre', 'text', 1], ['color', 'Color', 'color'], ['activo', 'Visible', 'checkbox']]]
   };
   var NUEVO = { inicio: 'evento', calendario: 'evento', tareas: 'tarea', contactos: 'contacto', notas: 'nota', accesos: 'acceso', compras: 'lista' };
 
@@ -533,7 +525,10 @@
     if (k === 'evento' && !d.cal) { var c0 = calOpts().filter(function (o) { var c = item(o[0]); return c && porRama(c.d); })[0] || calOpts()[0]; d.cal = c0 ? c0[0] : ''; }
     if (k === 'evento' && it && it.sh) d.cal = (acc(it.sh.id, ME.id) || {}).cal || d.cal;
     var esMio = !it || !it.sh || it.sh.owner === ME.id;
+    $('#frm').onclick = null; $('#frm').onchange = null;
     var h = '<h3>' + (nuevo ? 'Nuevo: ' : '') + def[0] + '</h3>';
+    if (k === 'evento' && it && it.d.fecha < hoyStr() && (!it.d.repetir || it.d.repetir === 'no')) h += '<p class="note">Evento pasado (oculto). Para reactivarlo, cámbiale la fecha y la hora y guarda.</p>';
+    if (k === 'tarea' && it && it.d.hecho) h += '<p class="note">Tarea hecha (oculta). Para reactivarla, desmarca «Hecha» y ponle un nuevo plazo.</p>';
     if (it && it.sh) h += '<p class="note">' + (it.sh.owner === ME.id ? 'Compartido con: ' + esc(miembrosTxt(it.sh)) : 'Compartido por ' + esc(nombre(it.sh.owner)) + '. Los cambios se ven en todos los miembros.') + '</p>';
     def[1].forEach(function (f) {
       var key = f[0], v = d[key] == null ? '' : d[key], t = typeof f[2] === 'function' ? f[2]() : f[2];
@@ -606,6 +601,539 @@
     if (data.k === 'lista') { var its = itemsDe(it.id); for (var i = 0; i < its.length; i++) await putObj(ME, null, Object.assign({}, its[i].d, { lista: nid }), ''); if (S.lista === it.id) S.lista = nid; }
     dropShare(it.sh.id);
     commit(); render(); toast('Ya no está compartido; te queda una copia');
+  }
+
+  /* ================= utilidades (cambios 1-4) ================= */
+  function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function telKey(t) { var d = String(t || '').replace(/\D/g, ''); return d.length >= 6 ? d.slice(-9) : ''; }
+  var STOP = ['de', 'del', 'la', 'el', 'los', 'las', 'y', 'a', 'en', 'dia', 'cita', 'fiesta', 'the', 'of', 'day', 'con'];
+  function parecido(a, b) {
+    var x = norm(a), y = norm(b); if (!x || !y) return false;
+    if (x === y) return true;
+    if ((x.length >= 4 && y.indexOf(x) >= 0) || (y.length >= 4 && x.indexOf(y) >= 0)) return true;
+    var tx = x.split(' ').filter(function (w) { return STOP.indexOf(w) < 0; }), ty = y.split(' ').filter(function (w) { return STOP.indexOf(w) < 0; });
+    if (!tx.length || !ty.length) return false;
+    var com = tx.filter(function (w) { return ty.indexOf(w) >= 0; }).length;
+    return com / Math.min(tx.length, ty.length) >= 0.6;
+  }
+  function hoyStr() { return ymd(new Date()); }
+  /* Preferencias del usuario (privadas y sincronizadas) */
+  function prefIt() { return privados('pref')[0] || null; }
+  function pref() { var p = prefIt(); return p ? p.d : {}; }
+  async function setPref(patch) { var p = prefIt(); await putObj(ME, p ? p.id : null, Object.assign({ k: 'pref' }, p ? p.d : {}, patch), ''); commit(); }
+  /* Ventana de diálogo que devuelve lo elegido (o null si se cancela) */
+  function dialogo(html, alAbrir) {
+    return new Promise(function (res) {
+      var frm = $('#frm'), dlg = $('#dlg'), hecho = false;
+      frm.onclick = null; frm.onchange = null; frm.innerHTML = html;
+      function fin(v) { if (hecho) return; hecho = true; dlg.onclose = null; res(v); }
+      frm.onsubmit = function (e) { e.preventDefault(); var b = e.submitter ? e.submitter.value : 'ok'; var fd = new FormData(frm); fd.set('_btn', b || 'ok'); dlg.close(); fin(b === 'cancel' ? null : fd); };
+      dlg.onclose = function () { if (!dlg.open) fin(null); }; /* ignora el cierre de la ventana anterior */
+      if (alAbrir) alAbrir(frm);
+      if (!dlg.open) dlg.showModal();
+    });
+  }
+  function leerTodos(accept, multiple) {
+    return new Promise(function (res) {
+      var inp = $('#fileIn'); inp.value = ''; inp.accept = accept; inp.multiple = multiple;
+      inp.onchange = async function () { var out = [], fs = Array.from(inp.files); for (var i = 0; i < fs.length; i++) out.push({ txt: await fs[i].text(), name: fs[i].name }); res(out); };
+      inp.click();
+    });
+  }
+
+  /* ================= papelera (cambio 4) ================= */
+  function enPapelera() { return Object.keys(D).map(item).filter(function (it) { return it && !it.sh && it.rec.owner === ME.id && it.d.papelera; }); }
+  async function aPapelera(its, etiqueta) {
+    var g = C.rid(8), at = Date.now();
+    for (var i = 0; i < its.length; i++) { if (!its[i] || its[i].sh) continue; await putObj(ME, its[i].id, Object.assign({}, its[i].d, { papelera: { at: at, g: g, et: etiqueta || '' } }), ''); }
+  }
+  async function copiaPrivada(it) {
+    var data = Object.assign({}, it.d); if (data.k === 'evento') data.cal = (acc(it.sh.id, ME.id) || {}).cal || data.cal;
+    var nid = await putObj(ME, null, data, ''), out = [item(nid)];
+    if (data.k === 'lista') { var its = itemsDe(it.id); for (var i = 0; i < its.length; i++) out.push(item(await putObj(ME, null, Object.assign({}, its[i].d, { lista: nid }), ''))); }
+    return out;
+  }
+  var TIPO_TXT = { evento: 'Evento', tarea: 'Tarea', contacto: 'Contacto', nota: 'Nota', acceso: 'Acceso', lista: 'Lista de compra', cal: 'Calendario', item: 'Artículo' };
+  function tituloDe(d) { return d.k === 'contacto' ? nombreC(d) : (d.titulo || d.nombre || d.t || '—'); }
+  function plazoTxt(p) { return { 30: '1 mes', 90: '3 meses', 365: '1 año' }[p] || (p + ' días'); }
+  V.papelera = function () {
+    var l = enPapelera(), grupos = {};
+    l.forEach(function (it) { var g = it.d.papelera.g; (grupos[g] = grupos[g] || []).push(it); });
+    var plazo = pref().plazoPapelera || 90;
+    var h = '<div class="btns"><button class="btn" data-a="ir" data-v="ajustes">‹ Ajustes</button>' + (l.length ? '<button class="btn del" data-a="vaciarPapelera">Vaciar papelera</button>' : '') + '</div><h2>Papelera</h2><p class="muted">Lo que borras se guarda aquí ' + plazoTxt(plazo) + ' y después se elimina solo. Puedes cambiar el plazo en Ajustes.</p><div class="card list">';
+    var keys = Object.keys(grupos).sort(function (a, b) { return grupos[b][0].d.papelera.at - grupos[a][0].d.papelera.at; });
+    if (!keys.length) return h + '<div class="empty">La papelera está vacía.</div></div>';
+    keys.forEach(function (g) {
+      var its = grupos[g], main = its.filter(function (x) { return x.d.k === 'cal'; })[0] || its.filter(function (x) { return x.d.k === 'lista'; })[0] || its[0], extra = its.length - 1;
+      h += '<div class="item wrap"><span class="tx"><b>' + esc(tituloDe(main.d)) + '</b><small>' + (TIPO_TXT[main.d.k] || '') + (extra ? ' + ' + extra + ' elementos' : '') + (main.d.papelera.et ? ' · ' + esc(main.d.papelera.et) : '') + ' · borrado el ' + new Date(main.d.papelera.at).toLocaleDateString('es-ES') + '</small></span><button class="btn sm" data-a="restaurar" data-v="' + g + '">Restaurar</button><button class="btn sm del" data-a="eliminarDef" data-v="' + g + '">Eliminar</button></div>';
+    });
+    return h + '</div>';
+  };
+
+  /* ================= contactos (cambios 1 y 2) ================= */
+  var ETQ = ['Móvil', 'Casa', 'Fijo', 'Otro'];
+  function nombreC(d) { return [d.nombre, d.apellidos].filter(Boolean).join(' ') || '(sin nombre)'; }
+  function telsDe(d) { return (d.tels || []).concat((d.trabajo && d.trabajo.tels) || []).filter(function (x) { return x && x.v; }); }
+  function mailsDe(d) { return (d.emails || []).concat((d.trabajo && d.trabajo.emails) || []).filter(function (x) { return x && x.v; }); }
+  function migrarContacto(d) {
+    var parts = String(d.nombre || '').trim().split(/\s+/).filter(Boolean);
+    var nd = Object.assign({}, d, { nombre: parts[0] || '', apellidos: parts.slice(1).join(' '), tels: d.telefono ? [{ l: 'Móvil', v: d.telefono }] : [], emails: d.email ? [{ l: 'Casa', v: d.email }] : [], dirs: [], trabajo: { empresa: '', cargo: '', tels: [], emails: [], dirs: [] }, revisarNombre: parts.length >= 3 });
+    delete nd.telefono; delete nd.email;
+    return nd;
+  }
+  function unirArr(arrs, keyf) {
+    var out = [], seen = {};
+    arrs.forEach(function (a) { (a || []).forEach(function (f) { if (!f || !f.v) return; var k = keyf(f.v); if (seen[k]) return; seen[k] = 1; out.push({ l: f.l, v: f.v }); }); });
+    return out;
+  }
+  function primero(arr) { return arr.filter(Boolean)[0] || ''; }
+  var kTel = function (v) { return telKey(v) || norm(v); }, kMail = function (v) { return String(v).trim().toLowerCase(); };
+  function mergeData(ds, nombreElegido) {
+    var full = nombreElegido || ds.map(nombreC).sort(function (a, b) { return b.length - a.length; })[0];
+    var best = ds.filter(function (d) { return nombreC(d) === full; })[0];
+    var nom = best ? { nombre: best.nombre, apellidos: best.apellidos } : { nombre: full.split(' ')[0], apellidos: full.split(' ').slice(1).join(' ') };
+    var tr = function (f) { return ds.map(function (d) { return d.trabajo && d.trabajo[f]; }); };
+    var ramas = Array.from(new Set(ds.map(function (d) { return d.rama || 'personal'; })));
+    var notas = Array.from(new Set(ds.map(function (d) { return (d.notas || '').trim(); }).filter(Boolean))).join('\n—\n');
+    return { k: 'contacto', nombre: nom.nombre, apellidos: nom.apellidos, tels: unirArr(ds.map(function (d) { return d.tels; }), kTel), emails: unirArr(ds.map(function (d) { return d.emails; }), kMail), dirs: unirArr(ds.map(function (d) { return d.dirs; }), norm),
+      cumple: primero(ds.map(function (d) { return d.cumple; })), grupo: primero(ds.map(function (d) { return d.grupo; })), rama: ramas.length === 1 ? ramas[0] : 'ambas', notas: notas,
+      trabajo: { empresa: primero(tr('empresa')), cargo: primero(tr('cargo')), tels: unirArr(tr('tels'), kTel), emails: unirArr(tr('emails'), kMail), dirs: unirArr(tr('dirs'), norm) } };
+  }
+  /* Busca un contacto que ya tenga alguno de estos teléfonos o correos */
+  function contactoCoincide(d, excluirId) {
+    var tk = telsDe(d).map(function (t) { return telKey(t.v); }).filter(Boolean), mk = mailsDe(d).map(function (m) { return kMail(m.v); });
+    return privados('contacto').filter(function (k) {
+      if (k.id === excluirId) return false;
+      return telsDe(k.d).some(function (t) { return tk.indexOf(telKey(t.v)) >= 0 && telKey(t.v); }) || mailsDe(k.d).some(function (m) { return mk.indexOf(kMail(m.v)) >= 0; });
+    })[0] || null;
+  }
+  V.contactos = function () {
+    var l = privados('contacto').filter(function (k) { return porRama(k.d); }).sort(function (a, b) { return nombreC(a.d).localeCompare(nombreC(b.d)); });
+    var rev = privados('contacto').filter(function (k) { return k.d.revisarNombre; }).length;
+    var h = '<div class="btns"><button class="btn" data-a="importar" data-v="contactos">Importar de Google (CSV o vCard)</button><button class="btn" data-a="ir" data-v="duplicados">Buscar duplicados</button></div>';
+    if (rev) h += '<div class="note click" data-a="ir" data-v="revisarNombres">Hay ' + rev + ' nombre' + (rev > 1 ? 's' : '') + ' para revisar (Nombre y Apellidos). Tócame.</div>';
+    var g = {};
+    l.forEach(function (k) { var n = k.d.grupo || 'Sin grupo'; (g[n] = g[n] || []).push(k); });
+    var gk = Object.keys(g).sort();
+    if (!gk.length) return h + '<div class="card empty">Aún no tienes contactos. Pulsa + o importa tu archivo de Google Contactos.</div>';
+    gk.forEach(function (n) {
+      h += '<div class="grp">' + esc(n) + ' · ' + g[n].length + '</div><div class="card list">' + g[n].map(function (k) {
+        var ts = telsDe(k.d), ms = mailsDe(k.d), sub = [ts[0] && ts[0].v, ms[0] && ms[0].v, k.d.trabajo && k.d.trabajo.empresa].filter(Boolean).join(' · ');
+        return '<div class="item wrap"><span class="tx click" data-a="editar" data-id="' + k.id + '"><b>' + esc(nombreC(k.d)) + '</b><small>' + esc(sub) + '</small></span>' +
+          (ts.length ? '<button class="btn sm" data-a="contactar" data-id="' + k.id + '" data-v="tel">Llamar</button><button class="btn sm" data-a="contactar" data-id="' + k.id + '" data-v="wa">WhatsApp</button>' : '') + (ms.length ? '<button class="btn sm" data-a="contactar" data-id="' + k.id + '" data-v="mail">Correo</button>' : '') + '</div>';
+      }).join('') + '</div>';
+    });
+    return h;
+  };
+  V.revisarNombres = function () {
+    var l = privados('contacto').filter(function (k) { return k.d.revisarNombre; });
+    var h = '<div class="btns"><button class="btn" data-a="ir" data-v="contactos">‹ Contactos</button></div><h2>Revisar nombres</h2>';
+    if (!l.length) return h + '<div class="card empty">No hay nombres pendientes de revisar.</div>';
+    h += '<p class="muted">Separé el nombre completo en Nombre y Apellidos. Corrige los que estén mal (por ejemplo, nombres compuestos) y pulsa Guardar.</p><form data-revnombres="1" class="col">';
+    l.forEach(function (k) { h += '<div class="card pad row2"><label class="f">Nombre<input name="n_' + k.id + '" value="' + esc(k.d.nombre) + '"></label><label class="f">Apellidos<input name="a_' + k.id + '" value="' + esc(k.d.apellidos) + '"></label></div>'; });
+    return h + '<button class="btn pri" type="submit">Guardar todos</button></form>';
+  };
+  /* --- duplicados --- */
+  function firma(x) { return x.map(function (k) { return k.id; }).sort().join('|'); }
+  function gruposDuplicados() {
+    var l = privados('contacto'), parent = {}, idx = {};
+    function f(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    function u(a, b) { parent[f(a)] = f(b); }
+    l.forEach(function (k) { parent[k.id] = k.id; });
+    l.forEach(function (k) {
+      telsDe(k.d).forEach(function (t) { var key = telKey(t.v); if (!key) return; key = 't' + key; if (idx[key]) u(k.id, idx[key]); else idx[key] = k.id; });
+      mailsDe(k.d).forEach(function (m) { var key = 'm' + kMail(m.v); if (idx[key]) u(k.id, idx[key]); else idx[key] = k.id; });
+    });
+    var ign = pref().ignorarDup || [], g = {};
+    l.forEach(function (k) { var r = f(k.id); (g[r] = g[r] || []).push(k); });
+    var fuertes = Object.values(g).filter(function (x) { return x.length > 1 && ign.indexOf(firma(x)) < 0; }), enF = {};
+    Object.values(g).filter(function (x) { return x.length > 1; }).forEach(function (x) { x.forEach(function (k) { enF[k.id] = 1; }); });
+    var pn = {};
+    l.forEach(function (k) { if (enF[k.id]) return; var n = norm(nombreC(k.d)); if (!n) return; (pn[n] = pn[n] || []).push(k); });
+    var debiles = Object.values(pn).filter(function (x) { return x.length > 1 && ign.indexOf(firma(x)) < 0; });
+    return { fuertes: fuertes, debiles: debiles };
+  }
+  V.duplicados = function () {
+    var r = gruposDuplicados(), h = '<div class="btns"><button class="btn" data-a="ir" data-v="contactos">‹ Contactos</button></div><h2>Buscar duplicados</h2><p class="muted">Busca en tus contactos de las dos ramas. Elige qué hacer con cada uno: <b>Quedar</b> (no se toca), <b>Juntar</b> (los marcados se unen en un solo contacto con todos sus datos) o <b>Borrar</b> (va a la papelera).</p>';
+    if (!r.fuertes.length && !r.debiles.length) return h + '<div class="card empty">No hay duplicados. Todo en orden.</div>';
+    function grupoHTML(x, debil) {
+      return '<form class="card pad col" data-dupgrupo="' + firma(x) + '"><p class="muted">' + (debil ? 'Solo coincide el nombre: pueden ser personas distintas.' : 'Coinciden en teléfono o correo.') + '</p>' + x.map(function (k) {
+        var info = telsDe(k.d).map(function (t) { return t.v; }).concat(mailsDe(k.d).map(function (m) { return m.v; })).concat([k.d.trabajo && k.d.trabajo.empresa]).filter(Boolean).join(' · ');
+        return '<div class="duprow"><span class="tx"><b>' + esc(nombreC(k.d)) + '</b> <span class="tag">' + esc({ personal: 'Personal', trabajo: 'Trabajo', ambas: 'Ambas' }[k.d.rama] || 'Personal') + '</span><small class="muted"> ' + esc(info) + '</small></span><select name="' + k.id + '" class="mini" aria-label="Qué hacer con ' + esc(nombreC(k.d)) + '"><option value="quedar"' + (debil ? ' selected' : '') + '>Quedar</option><option value="juntar"' + (debil ? '' : ' selected') + '>Juntar</option><option value="borrar">Borrar</option></select></div>';
+      }).join('') + '<div class="btns"><button class="btn pri" type="submit" value="aplicar">Aplicar</button><button class="btn" type="submit" value="distintos">' + (debil ? 'Son personas distintas' : 'No son duplicados') + '</button></div></form>';
+    }
+    if (r.fuertes.length) h += '<h2>Duplicados (' + r.fuertes.length + ')</h2>' + r.fuertes.map(function (x) { return grupoHTML(x, false); }).join('');
+    if (r.debiles.length) h += '<h2>Posibles duplicados: solo el nombre (' + r.debiles.length + ')</h2>' + r.debiles.map(function (x) { return grupoHTML(x, true); }).join('');
+    return h;
+  };
+  async function aplicarDuplicados(form, boton) {
+    var ids = form.dataset.dupgrupo.split('|');
+    if (boton === 'distintos') { var ign = (pref().ignorarDup || []).concat([form.dataset.dupgrupo]); await setPref({ ignorarDup: ign }); render(); toast('Anotado: no volverán a salir'); return; }
+    var fd = new FormData(form), jun = [], bor = [];
+    ids.forEach(function (id) { var v = fd.get(id); if (v === 'juntar') jun.push(item(id)); if (v === 'borrar') bor.push(item(id)); });
+    if (jun.length >= 2) {
+      var sugerido = jun.map(function (x) { return nombreC(x.d); }).sort(function (a, b) { return b.length - a.length; })[0];
+      var nom = prompt('Nombre del contacto unido (puedes cambiarlo):', sugerido); if (nom === null) return;
+      var merged = mergeData(jun.map(function (x) { return x.d; }), nom.trim() || sugerido);
+      if (!jun.some(function (x) { return nombreC(x.d) === nom.trim(); })) { var p = nom.trim().split(/\s+/); merged.nombre = p[0] || ''; merged.apellidos = p.slice(1).join(' '); }
+      await putObj(ME, jun[0].id, merged, '');
+      await aPapelera(jun.slice(1), 'unido en «' + nombreC(merged) + '»');
+    }
+    if (bor.length) await aPapelera(bor, 'duplicado');
+    commit(); render(); toast((jun.length >= 2 ? jun.length + ' contactos unidos. ' : '') + (bor.length ? bor.length + ' a la papelera.' : ''));
+  }
+  /* --- formulario de contacto --- */
+  function filaMulti(campo, f, tipo) {
+    var std = ETQ.indexOf(f.l) >= 0, sel = std ? f.l : (f.l ? 'Personalizado' : 'Otro');
+    return '<div class="mrow"><select class="mlab" aria-label="Etiqueta">' + ETQ.concat(['Personalizado']).map(function (o) { return '<option' + (o === sel ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>' +
+      '<input class="mcus" placeholder="Nombre del campo" value="' + (std ? '' : esc(f.l || '')) + '"' + (sel === 'Personalizado' ? '' : ' hidden') + ' aria-label="Etiqueta personalizada">' +
+      '<input class="mval" type="' + tipo + '" value="' + esc(f.v || '') + '" aria-label="Valor"><button type="button" class="btn sm" data-addrow="' + campo + '" data-tipo="' + tipo + '" aria-label="Añadir otro">+</button><button type="button" class="btn sm del" data-delrow="1" aria-label="Quitar">✕</button></div>';
+  }
+  function bloqueMulti(campo, titulo, arr, tipo, defL) {
+    var a = (arr && arr.length) ? arr : [{ l: defL, v: '' }];
+    return '<div class="f">' + titulo + '<div class="mlist" data-lista="' + campo + '" data-def="' + defL + '">' + a.map(function (f) { return filaMulti(campo, f, tipo); }).join('') + '</div></div>';
+  }
+  function leerMulti(frm, campo) {
+    return Array.from(frm.querySelectorAll('.mlist[data-lista="' + campo + '"] .mrow')).map(function (r) {
+      var sel = r.querySelector('.mlab').value, cus = r.querySelector('.mcus').value.trim(), v = r.querySelector('.mval').value.trim();
+      return { l: sel === 'Personalizado' ? (cus || 'Otro') : sel, v: v };
+    }).filter(function (x) { return x.v; });
+  }
+  function abrirContacto(it) {
+    var d = it ? Object.assign({}, it.d) : { k: 'contacto', rama: rama() === 'todo' ? 'personal' : rama(), tels: [], emails: [], dirs: [], trabajo: {} };
+    var t = d.trabajo || {};
+    var personal = '<h4>Datos personales</h4><div class="row2"><label class="f">Nombre<input name="nombre" value="' + esc(d.nombre || '') + '" required></label><label class="f">Apellidos<input name="apellidos" value="' + esc(d.apellidos || '') + '"></label></div>' +
+      bloqueMulti('tels', 'Teléfonos', d.tels, 'tel', 'Móvil') + bloqueMulti('emails', 'Correos', d.emails, 'email', 'Casa') + bloqueMulti('dirs', 'Direcciones', d.dirs, 'text', 'Casa') +
+      '<div class="row2"><label class="f">Cumpleaños (DD-MM)<input name="cumple" value="' + esc(d.cumple || '') + '" placeholder="15-12" pattern="\\d{2}-\\d{2}"></label><label class="f">Grupo<input name="grupo" value="' + esc(d.grupo || '') + '" placeholder="Familia, Médicos…"></label></div>' +
+      '<label class="f">Rama<select name="rama">' + RAMAS.map(function (o) { return '<option value="' + o[0] + '"' + (d.rama === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>';
+    var trabajo = '<h4>Datos de trabajo</h4><div class="row2"><label class="f">Empresa<input name="empresa" value="' + esc(t.empresa || '') + '"></label><label class="f">Cargo<input name="cargo" value="' + esc(t.cargo || '') + '"></label></div>' +
+      bloqueMulti('ttels', 'Teléfonos de trabajo', t.tels, 'tel', 'Fijo') + bloqueMulti('temails', 'Correos de trabajo', t.emails, 'email', 'Otro') + bloqueMulti('tdirs', 'Direcciones de trabajo', t.dirs, 'text', 'Otro');
+    var h = '<h3>' + (it ? 'Contacto' : 'Nuevo contacto') + '</h3>' + (rama() === 'trabajo' ? trabajo + personal : personal + trabajo) +
+      '<h4>Notas</h4><label class="f"><span class="sr">Notas</span><textarea name="notas">' + esc(d.notas || '') + '</textarea></label>' +
+      '<div class="btns"><button class="btn pri" value="ok">Guardar</button><button class="btn" value="cancel" formnovalidate>Cancelar</button>' + (it ? '<button class="btn del" type="button" data-a="borrar" data-id="' + it.id + '">Borrar</button>' : '') + '</div>';
+    var frm = $('#frm');
+    frm.innerHTML = h;
+    frm.onclick = function (e) {
+      var add = e.target.closest('[data-addrow]'), del = e.target.closest('[data-delrow]');
+      if (add) { var lst = add.closest('.mlist'); add.closest('.mrow').insertAdjacentHTML('afterend', filaMulti(add.dataset.addrow, { l: lst.dataset.def, v: '' }, add.dataset.tipo)); }
+      if (del) { var row = del.closest('.mrow'), l2 = row.closest('.mlist'); if (l2.querySelectorAll('.mrow').length > 1) row.remove(); else row.querySelector('.mval').value = ''; }
+    };
+    frm.onchange = function (e) { if (e.target.classList.contains('mlab')) { var c = e.target.parentNode.querySelector('.mcus'); c.hidden = e.target.value !== 'Personalizado'; if (!c.hidden) c.focus(); } };
+    frm.onsubmit = async function (e) {
+      if (e.submitter && e.submitter.value === 'cancel') return;
+      e.preventDefault();
+      var fd = new FormData(frm);
+      var nd = Object.assign({}, d, { k: 'contacto', nombre: (fd.get('nombre') || '').trim(), apellidos: (fd.get('apellidos') || '').trim(), tels: leerMulti(frm, 'tels'), emails: leerMulti(frm, 'emails'), dirs: leerMulti(frm, 'dirs'),
+        cumple: (fd.get('cumple') || '').trim(), grupo: (fd.get('grupo') || '').trim(), rama: fd.get('rama'), notas: (fd.get('notas') || '').trim(), revisarNombre: false,
+        trabajo: { empresa: (fd.get('empresa') || '').trim(), cargo: (fd.get('cargo') || '').trim(), tels: leerMulti(frm, 'ttels'), emails: leerMulti(frm, 'temails'), dirs: leerMulti(frm, 'tdirs') } });
+      var texto = [nd.notas, nd.trabajo.empresa, nd.trabajo.cargo].concat(nd.dirs.map(function (x) { return x.v; })).join(' ');
+      if (/\d[\d -]{11,}\d/.test(texto)) { alert('Por seguridad no guardes números de tarjeta o de cuenta completos.'); return; }
+      if (!it) {
+        var ya = contactoCoincide(nd);
+        if (ya && confirm('Ya existe «' + nombreC(ya.d) + '» con este teléfono o correo.\n\nAceptar = juntar con él\nCancelar = crear igualmente')) {
+          await putObj(ME, ya.id, mergeData([ya.d, nd]), ''); frm.onclick = null; frm.onchange = null; $('#dlg').close(); commit(); render(); toast('Juntado con «' + nombreC(ya.d) + '»'); return;
+        }
+      }
+      await putObj(ME, it ? it.id : null, nd, '');
+      frm.onclick = null; frm.onchange = null; $('#dlg').close(); commit(); render(); toast('Guardado');
+    };
+    $('#dlg').showModal();
+  }
+  async function contactar(id, modo) {
+    var k = item(id); if (!k) return;
+    var ops = modo === 'mail' ? mailsDe(k.d) : telsDe(k.d);
+    var trab = (k.d.trabajo && (modo === 'mail' ? k.d.trabajo.emails : k.d.trabajo.tels)) || [];
+    function abrir(v) {
+      if (modo === 'mail') location.href = 'mailto:' + v;
+      else if (modo === 'tel') location.href = 'tel:' + String(v).replace(/[^\d+]/g, '');
+      else window.open('https://wa.me/' + String(v).replace(/\D/g, '').replace(/^00/, ''), '_blank', 'noopener');
+    }
+    if (ops.length === 1) return abrir(ops[0].v);
+    var r = await dialogo('<h3>' + ({ tel: 'Llamar a', wa: 'WhatsApp a', mail: 'Escribir a' }[modo]) + ' ' + esc(nombreC(k.d)) + '</h3><div class="col">' + ops.map(function (o, i) {
+      return '<button class="btn" value="' + i + '">' + esc(o.l) + (trab.indexOf(o) >= 0 ? ' (trabajo)' : '') + ': ' + esc(o.v) + '</button>';
+    }).join('') + '<button class="btn" value="cancel" formnovalidate>Cancelar</button></div>');
+    if (r) abrir(ops[+r.get('_btn')].v);
+  }
+  /* --- importar contactos (Google CSV, Outlook CSV, vCard) con todos sus campos --- */
+  function etqDe(label) {
+    var l = norm(String(label || '').replace(/^\*\s*/, ''));
+    if (!l) return { l: 'Otro', t: false };
+    var work = /work|trabajo|business|empresa|oficina/.test(l);
+    var e = /mobile|movil|cell|celular/.test(l) ? 'Móvil' : /home|casa|personal|particular/.test(l) ? 'Casa' : /main|fijo|landline|principal/.test(l) ? 'Fijo' : /other|otro/.test(l) ? 'Otro' : work ? (/fax/.test(l) ? 'Otro' : 'Fijo') : String(label).replace(/^\*\s*/, '').trim();
+    return { l: e, t: work };
+  }
+  function nuevoContactoVacio(r0) { return { k: 'contacto', nombre: '', apellidos: '', tels: [], emails: [], dirs: [], cumple: '', grupo: '', rama: r0, notas: '', trabajo: { empresa: '', cargo: '', tels: [], emails: [], dirs: [] } }; }
+  function pon(c, tipo, label, valor) {
+    String(valor || '').split(':::').map(function (s) { return s.trim(); }).filter(Boolean).forEach(function (v) {
+      var e = etqDe(label), dst = e.t ? c.trabajo[tipo] : c[tipo];
+      if (e.t && tipo === 'tels' && /mobile|movil|cell/.test(norm(label))) e.l = 'Móvil';
+      if (e.t && tipo !== 'tels' && e.l === 'Fijo') e.l = 'Otro';
+      dst.push({ l: e.l, v: v });
+    });
+  }
+  function parseCSVContactos(txt, r0) {
+    var rows = csvParse(txt), hd = (rows.shift() || []).map(function (h) { return h.trim(); }), lo = hd.map(function (h) { return h.toLowerCase(); });
+    var col = function (re) { for (var i = 0; i < lo.length; i++) if (re.test(lo[i])) return i; return -1; };
+    var cF = col(/^(first name|given name|nombre)$/), cM = col(/^(middle name|additional name|segundo nombre)$/), cL = col(/^(last name|family name|apellidos?)$/), cN = col(/^(name|display name|nombre completo)$/);
+    var cB = col(/^(birthday|cumpleaños)$/), cG = col(/^(labels|group membership|etiquetas|categorías|categories)$/), cNo = col(/^(notes|notas)$/);
+    var cOrg = col(/^(organization( 1)? - name|organization name|company|organización|compañía|empresa)$/), cTit = col(/^(organization( 1)? - title|organization title|job title|puesto|cargo)$/);
+    var multi = [];
+    lo.forEach(function (h, i) {
+      var m = /^(phone|e-mail|address) (\d+) - (value|formatted)$/.exec(h);
+      if (m) { var lab = col(new RegExp('^' + m[1] + ' ' + m[2] + ' - (label|type)$')); multi.push({ i: i, tipo: { phone: 'tels', 'e-mail': 'emails', address: 'dirs' }[m[1]], lab: lab, fijo: null }); return; }
+      if (/ - /.test(h)) return;
+      if (/phone|teléfono|telefono|móvil|movil/.test(h) && !/fax/.test(h)) multi.push({ i: i, tipo: 'tels', lab: -1, fijo: hd[i] });
+      else if (/e-?mail|correo/.test(h)) multi.push({ i: i, tipo: 'emails', lab: -1, fijo: /business|trabajo/.test(h) ? 'Trabajo' : 'Otro' });
+    });
+    return rows.map(function (r) {
+      var g = function (i) { return i >= 0 ? (r[i] || '').trim() : ''; };
+      var c = nuevoContactoVacio(r0);
+      c.nombre = [g(cF), g(cM)].filter(Boolean).join(' '); c.apellidos = g(cL);
+      if (!c.nombre && !c.apellidos && g(cN)) { var p = g(cN).split(/\s+/); c.nombre = p[0]; c.apellidos = p.slice(1).join(' '); c.revisarNombre = p.length >= 3; }
+      multi.forEach(function (m) { if (g(m.i)) pon(c, m.tipo, m.fijo || (m.lab >= 0 ? g(m.lab) : 'Otro'), g(m.i)); });
+      c.cumple = cumpleDe(g(cB)); c.notas = g(cNo);
+      c.grupo = g(cG).split(':::').map(function (s) { return s.trim().replace(/^\*\s*/, ''); }).filter(function (s) { return s && !/^(mycontacts|starred)$/i.test(s); })[0] || '';
+      c.trabajo.empresa = g(cOrg); c.trabajo.cargo = g(cTit);
+      return c;
+    }).filter(function (c) { return c.nombre || c.apellidos; });
+  }
+  function parseVCard(txt, r0) {
+    return txt.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/BEGIN:VCARD/i).slice(1).map(function (card) {
+      var c = nuevoContactoVacio(r0), fn = '';
+      card.split(/\r?\n/).forEach(function (l) {
+        var i = l.indexOf(':'); if (i < 0) return;
+        var head = l.slice(0, i).replace(/^item\d+\./i, ''), parts = head.split(';'), key = parts[0].toUpperCase(), v = l.slice(i + 1).trim().replace(/\\,/g, ',').replace(/\;/g, ';');
+        var tipos = parts.slice(1).join(' ').replace(/TYPE=/gi, '').replace(/,/g, ' ');
+        if (key === 'FN') fn = v;
+        else if (key === 'N') { var n = l.slice(i + 1).split(';'); c.apellidos = (n[0] || '').trim(); c.nombre = [n[1], n[2]].filter(function (x) { return x && x.trim(); }).join(' ').trim(); }
+        else if (key === 'TEL') pon(c, 'tels', /cell/i.test(tipos) ? (/work/i.test(tipos) ? 'work mobile' : 'mobile') : tipos || 'Otro', v);
+        else if (key === 'EMAIL') pon(c, 'emails', tipos.replace(/internet|pref/gi, '').trim() || 'Otro', v);
+        else if (key === 'ADR') pon(c, 'dirs', tipos.replace(/pref/gi, '').trim() || 'Otro', v.split(';').map(function (s) { return s.trim(); }).filter(Boolean).join(', '));
+        else if (key === 'ORG') c.trabajo.empresa = v.split(';').filter(Boolean).join(' · ');
+        else if (key === 'TITLE') c.trabajo.cargo = v;
+        else if (key === 'BDAY') c.cumple = cumpleDe(v);
+        else if (key === 'NOTE') c.notas = v.replace(/\\n/gi, '\n');
+        else if (key === 'CATEGORIES') c.grupo = v.split(',').filter(function (s) { return !/^mycontacts$/i.test(s); })[0] || '';
+      });
+      if (!c.nombre && !c.apellidos && fn) { var p = fn.split(/\s+/); c.nombre = p[0]; c.apellidos = p.slice(1).join(' '); c.revisarNombre = p.length >= 3; }
+      return c;
+    }).filter(function (c) { return c.nombre || c.apellidos; });
+  }
+  async function importarContactos(files) {
+    var r0 = rama() === 'todo' ? 'personal' : rama(), lista = [];
+    files.forEach(function (f) { lista = lista.concat(/BEGIN:VCARD/i.test(f.txt) ? parseVCard(f.txt, r0) : parseCSVContactos(f.txt, r0)); });
+    if (!lista.length) return alert('No se encontraron contactos en el archivo.');
+    var pares = lista.map(function (c) { return { c: c, ya: contactoCoincide(c) }; }), nd = pares.filter(function (p) { return p.ya; }).length, juntar = false;
+    if (nd) juntar = confirm(nd + ' de los ' + lista.length + ' contactos ya existen (mismo teléfono o correo).\n\nAceptar = juntarlos con los existentes\nCancelar = crearlos igualmente');
+    var n = 0, j = 0;
+    for (var i = 0; i < pares.length; i++) {
+      var p = pares[i];
+      if (p.ya && juntar) { var actual = item(p.ya.id); await putObj(ME, p.ya.id, mergeData([actual.d, p.c]), ''); j++; }
+      else { await putObj(ME, null, p.c, ''); n++; }
+    }
+    commit(); render();
+    await dialogo('<h3>Contactos importados</h3><ul><li>' + n + ' contactos nuevos</li>' + (j ? '<li>' + j + ' juntados con contactos que ya tenías</li>' : '') + '</ul><p class="muted">Si algún contacto tiene muchos datos repetidos, usa «Buscar duplicados».</p><div class="btns"><button class="btn pri" value="ok">Aceptar</button></div>');
+  }
+
+  /* ================= importar calendarios (cambio 3) ================= */
+  function parseICS(txt, nombreArchivo) {
+    var lines = txt.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/), calName = '', ev = null, evs = [], pas = 0, hoy = hoyStr();
+    lines.forEach(function (l) { if (/^X-WR-CALNAME/i.test(l)) calName = l.slice(l.indexOf(':') + 1).trim(); });
+    calName = calName || nombreArchivo.replace(/\.ics$/i, '').replace(/_/g, ' ');
+    var unesc = function (s) { return s.replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1'); };
+    lines.forEach(function (l) {
+      if (l === 'BEGIN:VEVENT') { ev = {}; return; }
+      if (!ev) return;
+      if (l === 'END:VEVENT') {
+        if (ev.dt && ev.sum) {
+          var rr = ev.rr || '', until = /UNTIL=(\d{8})/.exec(rr), rep = /YEARLY/.test(rr) ? 'anual' : /MONTHLY/.test(rr) ? 'mensual' : /WEEKLY/.test(rr) ? 'semanal' : /DAILY/.test(rr) ? 'diario' : 'no';
+          var hasta = until ? icsDate(until[1]).f : '';
+          if (ev.dt.f >= hoy || (rep !== 'no' && (!hasta || hasta >= hoy))) evs.push({ k: 'evento', titulo: ev.sum, fecha: ev.dt.f, hora: ev.dt.h, repetir: rep, hasta: hasta, lugar: ev.loc || '', notas: ev.desc || '', aviso: '' });
+          else pas++;
+        }
+        ev = null; return;
+      }
+      var i = l.indexOf(':'); if (i < 0) return;
+      var key = l.slice(0, i).split(';')[0].toUpperCase(), val = l.slice(i + 1);
+      if (key === 'SUMMARY') ev.sum = unesc(val); else if (key === 'DTSTART') ev.dt = icsDate(val); else if (key === 'RRULE') ev.rr = val;
+      else if (key === 'LOCATION') ev.loc = unesc(val); else if (key === 'DESCRIPTION') ev.desc = unesc(val).slice(0, 500);
+    });
+    return { nombre: calName, evs: evs, pasados: pas };
+  }
+  function opcionesCal(prefijo, texto, sel) { return cals().filter(function (c) { return c.d.tipo !== 'cumple'; }).map(function (c) { return '<option value="' + prefijo + c.id + '"' + (sel === c.id ? ' selected' : '') + '>' + texto + esc(c.d.nombre) + '</option>'; }).join(''); }
+  /* Guarda eventos en un calendario, preguntando por los duplicados. R acumula el resumen. */
+  async function procesarEventos(evs, destId, R, opt) {
+    opt = opt || {};
+    var existentes = todos('evento'), dups = [], limpios = [];
+    evs.forEach(function (e) {
+      var m = existentes.filter(function (x) { return (ocurre(x.d, e.fecha) || ocurre(e, x.d.fecha)) && parecido(x.d.titulo, e.titulo); })[0];
+      if (!m) { limpios.push(e); return; }
+      var cx = calDe(m);
+      if (opt.mismoCalSilencio && cx && cx.id === destId) { R.ya = (R.ya || 0) + 1; return; }
+      if (opt.mismoCalSilencio && cx && /^auto-/.test(cx.d.tipo || '')) { limpios.push(e); return; } /* entre calendarios automáticos (p. ej. Rumanía y ortodoxos) no es duplicado */
+      dups.push({ e: e, x: m });
+    });
+    for (var i = 0; i < limpios.length; i++) { await putObj(ME, null, Object.assign({}, limpios[i], { cal: destId }), ''); R.imp++; }
+    if (!dups.length) return;
+    var r = await dialogo('<h3>' + dups.length + ' posible' + (dups.length > 1 ? 's' : '') + ' duplicado' + (dups.length > 1 ? 's' : '') + '</h3><p class="muted">Estos eventos coinciden en fecha y tienen un nombre parecido a otros que ya tienes.</p>' +
+      '<label class="f">Aplicar a todos<select id="dupTodos"><option value="">— elegir —</option><option value="borrar">Borrar (no importar)</option>' + opcionesCal('cal:', 'Importar en ') + '<option value="sust">Sustituir el existente</option></select></label><div class="card list">' +
+      dups.map(function (p, i) {
+        var cx = calDe(p.x);
+        return '<div class="item wrap"><span class="tx"><b>' + esc(p.e.titulo) + '</b><small>' + fechaLarga(p.e.fecha) + ' · ya tienes «' + esc(p.x.d.titulo) + '»' + (cx ? ' en ' + esc(cx.d.nombre) : '') + '</small></span><select name="d' + i + '" class="mini dupsel" aria-label="Qué hacer"><option value="borrar">Borrar (no importar)</option>' + opcionesCal('cal:', 'Importar en ', destId) + '<option value="sust">Sustituir el existente</option></select></div>';
+      }).join('') + '</div><div class="btns"><button class="btn pri" value="ok">Continuar</button></div>',
+      function (frm) { frm.querySelectorAll('.dupsel').forEach(function (s) { s.value = 'borrar'; }); frm.onchange = function (e) { if (e.target.id === 'dupTodos' && e.target.value) frm.querySelectorAll('.dupsel').forEach(function (s) { s.value = e.target.value; }); }; });
+    for (var j = 0; j < dups.length; j++) {
+      var v = r ? r.get('d' + j) : 'borrar', p = dups[j];
+      if (v === 'borrar' || !v) R.dup++;
+      else if (v === 'sust') { var nd = Object.assign({}, p.x.d, { titulo: p.e.titulo, fecha: p.e.fecha, hora: p.e.hora, repetir: p.e.repetir, hasta: p.e.hasta, lugar: p.e.lugar || p.x.d.lugar, notas: p.e.notas || p.x.d.notas }); await putObj(ME, p.x.id, nd, p.x.sh ? p.x.sh.id : ''); R.sust++; }
+      else { await putObj(ME, null, Object.assign({}, p.e, { cal: v.slice(4) }), ''); R.imp++; }
+    }
+  }
+  function resumenHTML(R, titulo, extra) {
+    return '<h3>' + titulo + '</h3><ul><li>' + R.imp + ' eventos importados</li><li>' + R.dup + ' duplicados borrados</li>' + (R.sust ? '<li>' + R.sust + ' sustituidos</li>' : '') + (R.ya ? '<li>' + R.ya + ' ya estaban</li>' : '') + '<li>' + R.pas + ' pasados ignorados</li></ul>' + (extra || '') + '<div class="btns"><button class="btn pri" value="ok">Aceptar</button></div>';
+  }
+  async function importarCalendarios(files, opt) {
+    opt = opt || {};
+    var R = { imp: 0, dup: 0, sust: 0, pas: 0, ya: 0 };
+    for (var i = 0; i < files.length; i++) {
+      var p = parseICS(files[i].txt, files[i].name);
+      R.pas += p.pasados;
+      if (!p.evs.length) { await dialogo('<h3>«' + esc(p.nombre) + '»</h3><p>No tiene eventos futuros (' + p.pasados + ' pasados ignorados).</p><div class="btns"><button class="btn pri" value="ok">Seguir</button></div>'); continue; }
+      var dest = opt.dest;
+      if (!dest) {
+        var r = await dialogo('<h3>Importar «' + esc(p.nombre) + '»</h3><p>' + p.evs.length + ' eventos futuros. ' + p.pasados + ' pasados se ignoran.</p>' +
+          '<label class="f">¿Dónde los guardo?<select name="dest"><option value="__nuevo">Crear un calendario nuevo con este nombre</option>' + opcionesCal('', 'Añadir a: ') + '</select></label>' +
+          '<label class="f">Nombre del calendario nuevo<input name="nombre" value="' + esc(p.nombre) + '"></label><div class="btns"><button class="btn pri" value="ok">Continuar</button><button class="btn" value="cancel" formnovalidate>Saltar este calendario</button></div>');
+        if (!r) continue;
+        dest = r.get('dest');
+        if (dest === '__nuevo') dest = await putObj(ME, null, { k: 'cal', nombre: (r.get('nombre') || p.nombre).trim(), color: COLORES[cals().length % COLORES.length], rama: 'ambas', activo: true, tipo: 'importado' }, '');
+      }
+      await procesarEventos(p.evs, dest, R);
+    }
+    commit(); render();
+    await dialogo(resumenHTML(R, 'Importación terminada'));
+  }
+
+  /* ================= festivos automáticos (cambio 3.7) ================= */
+  var AUTO = { lab: { tipo: 'auto-lab', nombre: 'FIESTAS LABORALES', color: '#B91C1C' }, ro: { tipo: 'auto-ro', nombre: 'Festivos Rumanía', color: '#A16207' }, ort: { tipo: 'auto-ort', nombre: 'Fiestas ortodoxas', color: '#57534E' } };
+  function calAuto(tipo) { return cals().filter(function (c) { return c.d.tipo === tipo; })[0] || null; }
+  async function asegurarCalAuto(key) { var a = AUTO[key], c = calAuto(a.tipo); return c ? c.id : putObj(ME, null, { k: 'cal', nombre: a.nombre, color: a.color, rama: 'ambas', activo: true, tipo: a.tipo }, ''); }
+  function dmas(dt, n) { var x = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + n); return ymd(x); }
+  function pascuaOrtodoxa(y) { var a = y % 4, b = y % 7, c = y % 19, d = (19 * c + 15) % 30, e = (2 * a + 4 * b - d + 34) % 7, s = d + e + 114; return new Date(y, Math.floor(s / 31) - 1, (s % 31) + 1 + 13); }
+  function pascuaOccidental(y) { var a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451), mes = Math.floor((h + l - 7 * m + 114) / 31), dia = ((h + l - 7 * m + 114) % 31) + 1; return new Date(y, mes - 1, dia); }
+  var ES_FIJOS = { '01-01': 'Año Nuevo', '01-06': 'Epifanía del Señor (Reyes)', '03-19': 'San José', '05-01': 'Fiesta del Trabajo', '05-02': 'Fiesta de la Comunidad de Madrid', '07-25': 'Santiago Apóstol', '08-15': 'Asunción de la Virgen', '10-12': 'Fiesta Nacional de España', '11-01': 'Todos los Santos', '12-06': 'Día de la Constitución', '12-08': 'Inmaculada Concepción', '12-25': 'Navidad' };
+  var RO_FIJOS = { '01-01': 'Anul Nou', '01-02': 'Anul Nou (a doua zi)', '01-06': 'Boboteaza', '01-07': 'Sfântul Ioan Botezătorul', '01-24': 'Ziua Unirii Principatelor Române', '05-01': 'Ziua Muncii', '06-01': 'Ziua Copilului', '08-15': 'Adormirea Maicii Domnului', '11-30': 'Sfântul Andrei', '12-01': 'Ziua Națională a României', '12-25': 'Crăciunul', '12-26': 'A doua zi de Crăciun' };
+  function texto(v) { if (!v) return ''; if (typeof v === 'string') return v; if (Array.isArray(v)) { var x = v.filter(function (t) { return /^(es|ro)$/i.test(t.language || t.lang || ''); })[0] || v[0]; return x ? (x.text || x.name || '') : ''; } return v.es || v.ro || v.en || Object.values(v)[0] || ''; }
+  async function nager(cc, y) {
+    var urls = ['https://nagerholidays.com/api/v4/Holidays/' + cc + '/' + y, 'https://date.nager.at/api/v3/PublicHolidays/' + y + '/' + cc];
+    for (var i = 0; i < urls.length; i++) {
+      try {
+        var r = await fetch(urls[i]); if (!r.ok) continue;
+        var j = await r.json(), arr = Array.isArray(j) ? j : (j.holidays || j.items || j.value || j.data || []);
+        if (!arr.length) continue;
+        return arr.map(function (h) { return { fecha: String(h.date || h.startDate || '').slice(0, 10), local: texto(h.localName), en: texto(h.name), nacional: h.nationalHoliday != null ? h.nationalHoliday : (h.global != null ? h.global : true), regiones: h.subdivisionCodes || h.counties || [], tipos: h.holidayTypes || h.types || ['Public'] }; }).filter(function (h) { return /^\d{4}-\d{2}-\d{2}$/.test(h.fecha); });
+      } catch (e) {}
+    }
+    return null;
+  }
+  function esPublico(h) { var t = [].concat(h.tipos || []).join(','); return !t || /public/i.test(t); }
+  function nombreES(h, y) {
+    var md = h.fecha.slice(5), en = norm(h.en), pw = pascuaOccidental(y);
+    if (/maundy|holy thursday/.test(en) || h.fecha === dmas(pw, -3)) return 'Jueves Santo';
+    if (/good friday/.test(en) || h.fecha === dmas(pw, -2)) return 'Viernes Santo';
+    if (/easter monday/.test(en) || h.fecha === dmas(pw, 1)) return 'Lunes de Pascua';
+    return ES_FIJOS[md] || h.local || h.en;
+  }
+  function nombreRO(h, y) {
+    var po = pascuaOrtodoxa(y), md = h.fecha.slice(5), mov = {}; mov[dmas(po, -2)] = 'Vinerea Mare'; mov[dmas(po, 0)] = 'Paștele'; mov[dmas(po, 1)] = 'A doua zi de Paște'; mov[dmas(po, 49)] = 'Rusaliile'; mov[dmas(po, 50)] = 'A doua zi de Rusalii';
+    return mov[h.fecha] || RO_FIJOS[md] || h.local || h.en;
+  }
+  function basicoES(y) { var pw = pascuaOccidental(y), l = Object.keys(ES_FIJOS).filter(function (md) { return ['03-19', '07-25'].indexOf(md) < 0; }).map(function (md) { return { titulo: ES_FIJOS[md], fecha: y + '-' + md }; }); l.push({ titulo: 'Jueves Santo', fecha: dmas(pw, -3) }, { titulo: 'Viernes Santo', fecha: dmas(pw, -2) }); return l; }
+  function basicoRO(y) { var po = pascuaOrtodoxa(y), l = Object.keys(RO_FIJOS).map(function (md) { return { titulo: RO_FIJOS[md], fecha: y + '-' + md }; }); [[-2, 'Vinerea Mare'], [0, 'Paștele'], [1, 'A doua zi de Paște'], [49, 'Rusaliile'], [50, 'A doua zi de Rusalii']].forEach(function (x) { l.push({ titulo: x[1], fecha: dmas(po, x[0]) }); }); return l; }
+  function ortodoxas(y) {
+    var po = pascuaOrtodoxa(y);
+    var fijas = { '01-06': 'Boboteaza (Epifanía)', '01-07': 'Sfântul Ioan Botezătorul', '01-30': 'Sfinții Trei Ierarhi', '02-02': 'Întâmpinarea Domnului', '03-25': 'Buna Vestire', '04-23': 'Sfântul Gheorghe', '05-21': 'Sfinții Constantin și Elena', '06-24': 'Nașterea Sf. Ioan Botezătorul', '06-29': 'Sfinții Petru și Pavel', '07-20': 'Sfântul Ilie', '08-06': 'Schimbarea la Față', '08-15': 'Adormirea Maicii Domnului', '08-29': 'Tăierea capului Sf. Ioan', '09-08': 'Nașterea Maicii Domnului', '09-14': 'Înălțarea Sfintei Cruci', '10-14': 'Sfânta Parascheva', '10-26': 'Sfântul Dumitru', '11-08': 'Sfinții Mihail și Gavriil', '11-30': 'Sfântul Andrei', '12-06': 'Sfântul Nicolae', '12-25': 'Crăciunul', '12-26': 'A doua zi de Crăciun' };
+    var l = Object.keys(fijas).map(function (md) { return { titulo: fijas[md], fecha: y + '-' + md }; });
+    [[-7, 'Floriile (Domingo de Ramos)'], [-2, 'Vinerea Mare (Viernes Santo)'], [0, 'Paștele (Pascua ortodoxa)'], [1, 'A doua zi de Paște'], [39, 'Înălțarea Domnului'], [49, 'Rusaliile (Pentecostés)'], [50, 'A doua zi de Rusalii']].forEach(function (x) { l.push({ titulo: x[1], fecha: dmas(po, x[0]) }); });
+    return l;
+  }
+  /* 3.8: si un festivo de la fuente está en otra fecha que la tuya, pregunta; nunca cambia lo tuyo */
+  function filtrarConflictos(evs, cid) {
+    var mios = privados('evento').filter(function (e) { return e.d.cal === cid; });
+    return evs.filter(function (e) {
+      var y = e.fecha.slice(0, 4);
+      if (mios.some(function (m) { return m.d.fecha === e.fecha && parecido(m.d.titulo, e.titulo); })) return true;
+      var otro = mios.filter(function (m) { return m.d.fecha.slice(0, 4) === y && m.d.fecha !== e.fecha && (m.d.repetir || 'no') === 'no' && parecido(m.d.titulo, e.titulo); })[0];
+      if (!otro) return true;
+      return confirm('«' + e.titulo + '»: en tu calendario está el ' + fechaLarga(otro.d.fecha) + ', pero la fuente oficial dice ' + fechaLarga(e.fecha) + '.\n\n¿Añado también el ' + fechaLarga(e.fecha) + '? (Tu fecha no se cambia.)');
+    });
+  }
+  async function actualizarFestivos(y) {
+    var R = { imp: 0, dup: 0, sust: 0, pas: 0, ya: 0 }, avisos = [], hoy = hoyStr();
+    var es = await nager('ES', y), ro = await nager('RO', y);
+    var lab = es ? es.filter(function (h) { return esPublico(h) && (h.nacional || (h.regiones || []).indexOf('ES-MD') >= 0); }).map(function (h) { return { titulo: nombreES(h, y), fecha: h.fecha }; }) : basicoES(y);
+    if (!es) avisos.push('No se pudo conectar con el servicio de festivos de España: se usó la lista básica (nacionales y Madrid). Revísala.');
+    var rol = ro ? ro.filter(function (h) { return esPublico(h) && h.nacional !== false; }).map(function (h) { return { titulo: nombreRO(h, y), fecha: h.fecha }; }) : basicoRO(y);
+    if (!ro) avisos.push('Rumanía: se usó la lista calculada.');
+    var sets = [['lab', lab], ['ro', rol], ['ort', ortodoxas(y)]];
+    for (var i = 0; i < sets.length; i++) {
+      var cid = await asegurarCalAuto(sets[i][0]);
+      var evs = sets[i][1].filter(function (e) { return e.fecha >= hoy; }).map(function (e) { return { k: 'evento', titulo: e.titulo, fecha: e.fecha, hora: '', repetir: 'no', hasta: '', aviso: '', lugar: '', notas: '', origen: 'auto' }; });
+      R.pas += sets[i][1].length - evs.length;
+      await procesarEventos(filtrarConflictos(evs, cid), cid, R, { mismoCalSilencio: true });
+    }
+    commit(); render();
+    return { R: R, avisos: avisos };
+  }
+  /* Aviso de diciembre para añadir los festivos de la empresa (3.12/3.13) */
+  function avisoLaborales() {
+    if (today.getMonth() !== 11 || !calAuto('auto-lab')) return '';
+    var y = today.getFullYear() + 1, p = pref();
+    if (p.labHecho === y || (p.labSnooze && p.labSnooze > Date.now())) return '';
+    return '<div class="note"><b>Festivos laborales de ' + y + '</b>: añade los de tu empresa (Alcalá de Henares y puentes) al calendario FIESTAS LABORALES.<div class="btns"><button class="btn sm pri" data-a="marcarAnio" data-v="' + y + '">Opción A: marcar en la app</button><button class="btn sm" data-a="opcionB">Opción B: PDF a Claude</button><button class="btn sm" data-a="labSnooze">Recordar en 3 días</button><button class="btn sm" data-a="labHecho" data-v="' + y + '">Ya está hecho</button></div></div>';
+  }
+  V.marcar = function () {
+    var y = S.marcarY || today.getFullYear(), lab = calAuto('auto-lab');
+    var h = '<div class="btns"><button class="btn" data-a="ir" data-v="calendarios">‹ Calendarios</button></div><h2>Añadir festivos del año a FIESTAS LABORALES</h2>';
+    if (!lab) return h + '<div class="card pad"><p>Primero activa los festivos automáticos.</p><button class="btn pri" data-a="activarFestivos">Activar festivos automáticos</button></div>';
+    var ya = {}; privados('evento').filter(function (e) { return e.d.cal === lab.id; }).forEach(function (e) { ya[e.d.fecha] = e.d.titulo; });
+    var n = Object.keys(S.marcados || {}).length;
+    h += '<div class="calhead"><button class="btn" data-a="marcarY" data-v="-1" aria-label="Año anterior">‹</button><b>' + y + '</b><button class="btn" data-a="marcarY" data-v="1" aria-label="Año siguiente">›</button></div>' +
+      '<p class="muted">Toca los días que ves en el calendario de tu empresa. En rojo, los que ya están en FIESTAS LABORALES.</p>' +
+      '<div class="card pad row2"><label class="f">Nombre<input id="mkNombre" value="Festivo local"></label><label class="f">Tipo<select id="mkTipo"><option>Festivo</option><option>Puente</option></select></label></div><div class="meses">';
+    for (var m = 0; m < 12; m++) {
+      h += '<div class="mmes"><b>' + MESES[m][0].toUpperCase() + MESES[m].slice(1) + '</b><div class="mgrid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(function (w) { return '<span class="wd">' + w + '</span>'; }).join('');
+      var off = (new Date(y, m, 1).getDay() + 6) % 7, dias = new Date(y, m + 1, 0).getDate();
+      for (var b = 0; b < off; b++) h += '<span></span>';
+      for (var d = 1; d <= dias; d++) {
+        var ds = y + '-' + pad(m + 1) + '-' + pad(d), cls = 'md' + (ya[ds] ? ' ya' : '') + (S.marcados && S.marcados[ds] ? ' sel' : '');
+        h += '<button class="' + cls + '" data-a="marcarDia" data-v="' + ds + '" title="' + esc(ya[ds] || '') + '" aria-label="' + d + ' de ' + MESES[m] + (ya[ds] ? ': ' + esc(ya[ds]) : '') + '"' + (ya[ds] ? ' disabled' : '') + '>' + d + '</button>';
+      }
+      h += '</div></div>';
+    }
+    return h + '</div><div class="stickybar"><span>' + n + ' día' + (n === 1 ? '' : 's') + ' marcado' + (n === 1 ? '' : 's') + '</span><button class="btn pri" data-a="guardarMarcados"' + (n ? '' : ' disabled') + '>Guardar en FIESTAS LABORALES</button></div>';
+  };
+
+  /* ================= mantenimiento al abrir ================= */
+  var mantOcupado = false;
+  async function mantenimiento() {
+    if (mantOcupado || !ME) return;
+    mantOcupado = true; var cambio = false;
+    try {
+      var cs = privados('contacto').filter(function (k) { return !Array.isArray(k.d.tels); });
+      for (var i = 0; i < cs.length; i++) { await putObj(ME, cs[i].id, migrarContacto(cs[i].d), ''); cambio = true; }
+      var lim = Date.now() - (pref().plazoPapelera || 90) * 864e5;
+      enPapelera().forEach(function (it) { if (it.d.papelera.at < lim) { tomb(it.id); cambio = true; } });
+    } finally { mantOcupado = false; }
+    if (cambio) commit();
+    var p = pref(), y = today.getFullYear();
+    if (p.festivosAuto && today.getMonth() === 11 && (p.festivosYear || 0) < y + 1 && !S.festEnCurso) {
+      S.festEnCurso = true;
+      setTimeout(async function () {
+        try { await setPref({ festivosYear: y + 1 }); var r = await actualizarFestivos(y + 1); toast('Festivos de ' + (y + 1) + ' actualizados: ' + r.R.imp + ' nuevos'); } catch (e) { console.log(e); }
+        S.festEnCurso = false;
+      }, 1500);
+    }
   }
 
   /* ================= alta de usuarios y sesiones ================= */
@@ -684,29 +1212,6 @@
     if (m[4] && m[6]) { var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5])); return { f: ymd(d), h: pad(d.getHours()) + ':' + pad(d.getMinutes()) }; }
     return { f: m[1] + '-' + m[2] + '-' + m[3], h: m[4] ? m[4] + ':' + m[5] : '' };
   }
-  async function importarICS(txt, nombreArchivo) {
-    var lines = txt.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/), calName = '', ev = null, evs = [];
-    lines.forEach(function (l) { if (/^X-WR-CALNAME/i.test(l)) calName = l.slice(l.indexOf(':') + 1).trim(); });
-    calName = calName || nombreArchivo.replace(/\.ics$/i, '').replace(/_/g, ' ');
-    var unesc = function (s) { return s.replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1'); };
-    lines.forEach(function (l) {
-      if (l === 'BEGIN:VEVENT') { ev = {}; return; }
-      if (!ev) return;
-      if (l === 'END:VEVENT') { if (ev.dt && ev.sum) evs.push(ev); ev = null; return; }
-      var i = l.indexOf(':'); if (i < 0) return;
-      var key = l.slice(0, i).split(';')[0].toUpperCase(), val = l.slice(i + 1);
-      if (key === 'SUMMARY') ev.sum = unesc(val); else if (key === 'DTSTART') ev.dt = icsDate(val); else if (key === 'RRULE') ev.rr = val;
-      else if (key === 'LOCATION') ev.loc = unesc(val); else if (key === 'DESCRIPTION') ev.desc = unesc(val).slice(0, 500);
-    });
-    var existente = cals().filter(function (c) { return c.d.nombre === calName && c.d.tipo === 'importado'; })[0];
-    var calId = existente ? existente.id : await putObj(ME, null, { k: 'cal', nombre: calName, color: COLORES[cals().length % COLORES.length], rama: rama() === 'todo' ? 'personal' : rama(), activo: true, tipo: 'importado' }, '');
-    if (existente) privados('evento').filter(function (e) { return e.d.cal === calId; }).forEach(function (e) { tomb(e.id); });
-    for (var j = 0; j < evs.length; j++) {
-      var e = evs[j], rr = e.rr || '', until = /UNTIL=(\d{8})/.exec(rr);
-      await putObj(ME, null, { k: 'evento', titulo: e.sum, fecha: e.dt.f, hora: e.dt.h, cal: calId, repetir: /YEARLY/.test(rr) ? 'anual' : /MONTHLY/.test(rr) ? 'mensual' : /WEEKLY/.test(rr) ? 'semanal' : /DAILY/.test(rr) ? 'diario' : 'no', hasta: until ? icsDate(until[1]).f : '', lugar: e.loc || '', notas: e.desc || '', aviso: '' }, '');
-    }
-    commit(); render(); toast(evs.length + ' eventos en el calendario "' + calName + '"');
-  }
   function csvParse(t) {
     var rows = [], row = [], f = '', q = false;
     for (var i = 0; i < t.length; i++) {
@@ -719,46 +1224,11 @@
     return rows.filter(function (r) { return r.some(function (x) { return x.trim(); }); });
   }
   function cumpleDe(v) { var m = /(\d{4}|-{2})-?(\d{2})-?(\d{2})/.exec(v || ''); if (m) return m[3] + '-' + m[2]; m = /^(\d{1,2})\/(\d{1,2})\/\d{2,4}$/.exec(v || ''); return m ? pad(m[2]) + '-' + pad(m[1]) : ''; }
-  async function importarContactos(txt, nombreArchivo) {
-    var lista = [], r0 = rama() === 'todo' ? 'personal' : rama();
-    if (/BEGIN:VCARD/i.test(txt)) {
-      txt.replace(/\r\n[ \t]/g, '').split(/BEGIN:VCARD/i).slice(1).forEach(function (card) {
-        var k = { nombre: '', telefono: '', email: '', cumple: '', grupo: '' };
-        card.split(/\r?\n/).forEach(function (l) {
-          var i = l.indexOf(':'); if (i < 0) return;
-          var key = l.slice(0, i).split(';')[0].replace(/^item\d+\./i, '').toUpperCase(), v = l.slice(i + 1).trim();
-          if (key === 'FN') k.nombre = v.replace(/\\,/g, ','); else if (key === 'TEL' && !k.telefono) k.telefono = v; else if (key === 'EMAIL' && !k.email) k.email = v;
-          else if (key === 'BDAY') k.cumple = cumpleDe(v); else if (key === 'CATEGORIES') k.grupo = v.split(',')[0].replace(/^myContacts$/i, '');
-        });
-        lista.push(k);
-      });
-    } else {
-      var rows = csvParse(txt), hd = (rows.shift() || []).map(function (h) { return h.trim().toLowerCase(); });
-      var col = function (re) { for (var i = 0; i < hd.length; i++) if (re.test(hd[i])) return i; return -1; };
-      var cN = col(/^(name|display name|nombre completo)$/), cF = col(/^(first name|given name|nombre)$/), cM = col(/^(middle name|segundo nombre)$/), cL = col(/^(last name|family name|apellidos?)$/);
-      var cE = col(/e-?mail.*(value|address)|^e-?mail$|correo/), cB = col(/birthday|cumpleaños/), cG = col(/group membership|labels|etiquetas|grupo/), cP = [];
-      hd.forEach(function (h, i) { if (/phone.*value|teléfono|telefono|mobile phone|^phone$|móvil/.test(h)) cP.push(i); });
-      rows.forEach(function (r) {
-        var g = function (i) { return i >= 0 ? (r[i] || '').trim() : ''; };
-        var ph = ''; cP.some(function (i) { ph = g(i).split(':::')[0].trim(); return ph; });
-        var grp = g(cG).split(':::').map(function (s) { return s.trim().replace(/^\* /, ''); }).filter(function (s) { return s && !/^(myContacts|starred)$/i.test(s); })[0] || '';
-        lista.push({ nombre: g(cN) || [g(cF), g(cM), g(cL)].filter(Boolean).join(' '), telefono: ph, email: g(cE).split(':::')[0].trim(), cumple: cumpleDe(g(cB)), grupo: grp });
-      });
-    }
-    var ya = {}; privados('contacto').forEach(function (c) { ya[(c.d.nombre || '').toLowerCase() + tel(c.d.telefono)] = c; });
-    var n = 0;
-    for (var i = 0; i < lista.length; i++) {
-      var k = lista[i]; if (!k.nombre) continue;
-      var prev = ya[k.nombre.toLowerCase() + tel(k.telefono)];
-      await putObj(ME, prev ? prev.id : null, Object.assign({ k: 'contacto', rama: r0 }, prev ? prev.d : {}, k, { grupo: k.grupo || (prev && prev.d.grupo) || '' }), ''); n++;
-    }
-    commit(); render(); toast(n + ' contactos importados de ' + nombreArchivo);
-  }
   /* Exportar / importar mis datos (para guardarlos o llevarlos a otra familia) */
   async function exportarMios() {
     var pw = prompt('Elige una contraseña para proteger la copia (mínimo 6 caracteres). La necesitarás para importarla:');
     if (pw === null) return; if (pw.length < 6) return alert('Mínimo 6 caracteres.');
-    var objetos = Object.keys(D).map(item).filter(function (it) { return it && it.d.k !== 'msg' && it.d.k !== 'sug' && (!it.sh || aceptado(it.sh)); }).map(function (it) {
+    var objetos = Object.keys(D).map(item).filter(function (it) { return it && it.d.k !== 'msg' && it.d.k !== 'sug' && it.d.k !== 'pref' && !it.d.papelera && (!it.sh || aceptado(it.sh)); }).map(function (it) {
       var d = Object.assign({}, it.d); if (it.sh && d.k === 'evento') d.cal = (acc(it.sh.id, ME.id) || {}).cal || d.cal; return { id: it.id, data: d };
     });
     var pack = await C.encWithPw(pw, { formato: 'miagenda-usuario', v: 1, nombre: me().nombre, exportado: new Date().toISOString(), objetos: objetos });
@@ -867,20 +1337,57 @@
     mes: function (d) { S.month = new Date(S.month.getFullYear(), S.month.getMonth() + (+d.v), 1); render(); },
     dia: function (d) { S.sel = d.v; var p = parseYmd(d.v); if (p.getMonth() !== S.month.getMonth()) S.month = new Date(p.getFullYear(), p.getMonth(), 1); render(); },
     tfiltro: function (d) { S.tfiltro = d.v; render(); },
-    nuevo: function () { abrirForm(NUEVO[S.view] || 'evento'); },
+    nuevo: function () { var k = NUEVO[S.view] || 'evento'; if (k === 'contacto') abrirContacto(); else abrirForm(k); },
     nuevoCal: function () { abrirForm('cal'); },
-    editar: function (d) { var it = item(d.id); if (!it) { var c = privados('contacto').filter(function (x) { return x.id === d.id; })[0]; if (c) abrirForm('contacto', c); return; } abrirForm(it.d.k, it); },
-    calActivo: async function (d) { var c = item(d.id); c.d.activo = c.d.activo === false; await putObj(ME, c.id, c.d, ''); commit(); render(); },
-    calPublico: async function (d) {
-      var p = window.CAL_PUBLICOS.filter(function (x) { return x.id === d.v; })[0];
-      var cid = await putObj(ME, null, { k: 'cal', nombre: p.nombre, color: p.color, rama: 'ambas', activo: true, tipo: 'publico', pub: p.id }, '');
-      for (var i = 0; i < p.eventos.length; i++) await putObj(ME, null, { k: 'evento', titulo: p.eventos[i][1], fecha: p.eventos[i][0], cal: cid, repetir: 'no', aviso: '' }, '');
-      commit(); render(); toast('Calendario "' + p.nombre + '" añadido' + (p.eventos.length ? '' : ': añade tú sus festivos'));
+    editar: function (d) { var it = item(d.id); if (!it) return; if (it.d.k === 'contacto') abrirContacto(it); else abrirForm(it.d.k, it); },
+    contactar: function (d) { return contactar(d.id, d.v); },
+    verPasados: function () { S.verPasados = !S.verPasados; render(); },
+    restaurar: async function (d) { var l = enPapelera().filter(function (it) { return it.d.papelera.g === d.v; }); for (var i = 0; i < l.length; i++) { var nd = Object.assign({}, l[i].d); delete nd.papelera; await putObj(ME, l[i].id, nd, ''); } commit(); render(); toast('Restaurado'); },
+    eliminarDef: function (d) { if (!confirm('¿Eliminar definitivamente? No se podrá recuperar.')) return; enPapelera().filter(function (it) { return it.d.papelera.g === d.v; }).forEach(function (it) { tomb(it.id); }); commit(); render(); toast('Eliminado'); },
+    vaciarPapelera: function () { var l = enPapelera(); if (!confirm('¿Vaciar la papelera? Se eliminan definitivamente ' + l.length + ' elementos.')) return; l.forEach(function (it) { tomb(it.id); }); commit(); render(); toast('Papelera vaciada'); },
+    activarFestivos: async function () {
+      var y = today.getFullYear();
+      await setPref({ festivosAuto: true, festivosYear: y + 1 });
+      toast('Descargando festivos…');
+      var r1 = await actualizarFestivos(y), r2 = await actualizarFestivos(y + 1);
+      var R = { imp: r1.R.imp + r2.R.imp, dup: r1.R.dup + r2.R.dup, sust: r1.R.sust + r2.R.sust, pas: r1.R.pas + r2.R.pas, ya: r1.R.ya + r2.R.ya };
+      await dialogo(resumenHTML(R, 'Festivos automáticos activados', '<p class="muted">Se crearon FIESTAS LABORALES (España + Comunidad de Madrid), Festivos Rumanía y Fiestas ortodoxas, para ' + y + ' y ' + (y + 1) + '. Cada diciembre se añadirá el año siguiente. Los festivos de Alcalá y los puentes los añades con «Añadir festivos del año».</p>' + r1.avisos.concat(r2.avisos).filter(function (v, i, a) { return a.indexOf(v) === i; }).map(function (a) { return '<p class="note">' + esc(a) + '</p>'; }).join('')));
     },
+    actualizarFestivosYa: async function () {
+      var y = +(($('#festYear') || {}).value || today.getFullYear()); toast('Actualizando ' + y + '…');
+      var r = await actualizarFestivos(y);
+      await dialogo(resumenHTML(r.R, 'Festivos de ' + y, r.avisos.map(function (a) { return '<p class="note">' + esc(a) + '</p>'; }).join('')));
+    },
+    marcarAnio: function (d) { S.marcarY = +d.v || today.getFullYear(); S.marcados = {}; location.hash = 'marcar'; },
+    marcarY: function (d) { S.marcarY = (S.marcarY || today.getFullYear()) + (+d.v); S.marcados = {}; render(); },
+    marcarDia: function (d) { S.marcados = S.marcados || {}; if (S.marcados[d.v]) delete S.marcados[d.v]; else S.marcados[d.v] = 1; var y = window.scrollY; render(); window.scrollTo(0, y); },
+    guardarMarcados: async function () {
+      var lab = calAuto('auto-lab'), dias = Object.keys(S.marcados || {}).sort(); if (!lab || !dias.length) return;
+      var nom = ($('#mkNombre').value || '').trim() || 'Festivo local', tipo = $('#mkTipo').value, titulo = tipo === 'Puente' ? 'Puente' + (nom && nom !== 'Festivo local' ? ' · ' + nom : '') : nom;
+      for (var i = 0; i < dias.length; i++) await putObj(ME, null, { k: 'evento', titulo: titulo, fecha: dias[i], hora: '', cal: lab.id, repetir: 'no', hasta: '', aviso: '', lugar: '', notas: '', origen: 'manual' }, '');
+      var y = S.marcarY; S.marcados = {};
+      if (today.getMonth() === 11 && y === today.getFullYear() + 1) await setPref({ labHecho: y });
+      commit(); render(); toast(dias.length + ' días guardados en FIESTAS LABORALES');
+    },
+    opcionB: async function () {
+      var y = today.getFullYear() + 1;
+      var r = await dialogo('<h3>Opción B: el PDF de tu empresa</h3><ol><li>Abre tu chat con Claude (el del proyecto de la agenda).</li><li>Adjunta el PDF y escribe: «Hazme el archivo .ics con los festivos laborales de ' + y + ' de este PDF».</li><li>Descarga el archivo .ics que te devuelva.</li><li>Vuelve aquí y pulsa <b>Importar .ics ahora</b>.</li></ol><div class="btns"><button class="btn pri" value="importar">Importar .ics ahora</button><button class="btn" value="cancel" formnovalidate>Más tarde</button></div>');
+      if (!r) return;
+      var lab = await asegurarCalAuto('lab');
+      var files = await leerTodos('.ics,text/calendar', true);
+      await importarCalendarios(files, { dest: lab });
+      await setPref({ labHecho: y });
+    },
+    labSnooze: function () { setPref({ labSnooze: Date.now() + 3 * 864e5 }).then(render); },
+    labHecho: function (d) { setPref({ labHecho: +d.v }).then(render); },
+
+    calActivo: async function (d) { var c = item(d.id); c.d.activo = c.d.activo === false; await putObj(ME, c.id, c.d, ''); commit(); render(); },
     icsUrl: async function () {
       var u = ($('#icsUrl').value || '').trim().replace(/^webcal:/i, 'https:'); if (!u) return;
-      try { var r = await fetch(u); if (!r.ok) throw 0; await importarICS(await r.text(), u.split('/').pop()); }
-      catch (e) { alert('Ese servidor no deja leer el calendario desde la app. Descarga el archivo .ics (abre la dirección en el navegador) e impórtalo con "Importar archivos .ics".'); }
+      var txt;
+      try { var r = await fetch(u); if (!r.ok) throw 0; txt = await r.text(); }
+      catch (e) { return alert('Ese servidor no deja leer el calendario desde la app. Descarga el archivo .ics (abre la dirección en el navegador) e impórtalo con "Importar archivos .ics".'); }
+      await importarCalendarios([{ txt: txt, name: u.split('/').pop().split('?')[0] }]);
     },
     borrar: async function (d) {
       var it = item(d.id); if (!it) return;
@@ -888,19 +1395,17 @@
         var otros = cals().filter(function (c) { return c.id !== it.id && c.d.tipo !== 'cumple'; });
         if (!otros.length) return alert('Necesitas al menos un calendario.');
         var evs = privados('evento').filter(function (e) { return e.d.cal === it.id; });
-        if (!confirm('¿Borrar el calendario "' + it.d.nombre + '" y sus ' + evs.length + ' eventos?')) return;
-        evs.forEach(function (e) { tomb(e.id); });
+        if (!confirm('¿Mover a la papelera el calendario «' + it.d.nombre + '» y sus ' + evs.length + ' eventos?')) return;
         recs('acc').filter(function (a) { return a.user === ME.id && a.cal === it.id; }).forEach(function (a) { a.cal = otros[0].id; save(a); });
-        tomb(it.id);
+        await aPapelera([it].concat(evs), '');
       } else if (it.sh) {
-        if (!confirm('Esto lo borra para todas las personas con las que lo compartes. ¿Seguro?')) return;
-        dropShare(it.sh.id);
+        if (!confirm('Se borra para todas las personas con las que lo compartes. Tú lo tendrás en la papelera. ¿Seguir?')) return;
+        var copias = await copiaPrivada(it); dropShare(it.sh.id); await aPapelera(copias, 'era compartido');
       } else {
-        if (!confirm('¿Borrar?')) return;
-        if (it.d.k === 'lista') itemsDe(it.id).forEach(function (i) { tomb(i.id); });
-        tomb(it.id);
+        if (!confirm('¿Mover a la papelera?')) return;
+        await aPapelera(it.d.k === 'lista' ? [it].concat(itemsDe(it.id)) : [it], '');
       }
-      $('#dlg').close(); if (S.lista === d.id) S.lista = null; commit(); render(); toast('Borrado');
+      $('#frm').onclick = null; $('#frm').onchange = null; $('#dlg').close(); if (S.lista === d.id) S.lista = null; commit(); render(); toast('Movido a la papelera');
     },
     hecho: async function (d) { var it = item(d.id); it.d.hecho = !it.d.hecho; await putObj(ME, it.id, it.d, ''); commit(); render(); },
     ics: function (d) { var it = item(d.id); exportarICS(it.d); },
@@ -925,8 +1430,8 @@
       commit(); render();
     },
     importar: function (d) {
-      if (d.v === 'ics') leerArchivos('.ics,text/calendar', true, importarICS);
-      else if (d.v === 'contactos') leerArchivos('.csv,.vcf,text/vcard,text/csv', true, importarContactos);
+      if (d.v === 'ics') leerTodos('.ics,text/calendar', true).then(importarCalendarios);
+      else if (d.v === 'contactos') leerTodos('.csv,.vcf,text/vcard,text/csv', true).then(importarContactos);
       else if (d.v === 'mios') leerArchivos('.miagenda,.json', false, importarMios);
     },
     exportarMios: exportarMios,
@@ -1029,6 +1534,12 @@
     var t = e.target; if (t.id === 'frm') return;
     e.preventDefault();
     try {
+      if (t.dataset.dupgrupo) { await aplicarDuplicados(t, e.submitter ? e.submitter.value : 'aplicar'); return; }
+      if (t.dataset.revnombres) {
+        var fdn = new FormData(t), lr = privados('contacto').filter(function (k) { return k.d.revisarNombre; });
+        for (var q = 0; q < lr.length; q++) { var nd2 = Object.assign({}, lr[q].d, { nombre: (fdn.get('n_' + lr[q].id) || '').trim(), apellidos: (fdn.get('a_' + lr[q].id) || '').trim(), revisarNombre: false }); await putObj(ME, lr[q].id, nd2, ''); }
+        commit(); location.hash = 'contactos'; toast('Nombres guardados'); return;
+      }
       if (t.dataset.pegarenlace) { if (!usarEnlace($('#pegaLink').value)) alert('Ese enlace no es una invitación válida.'); render(); }
       if (t.dataset.crearfamilia) {
         if ($('#cfPw').value !== $('#cfPw2').value) return alert('Las contraseñas no coinciden.');
@@ -1077,8 +1588,9 @@
       }
     } catch (err) { console.error(err); alert(err.message); }
   });
+  document.addEventListener('change', function (e) { if (e.target.id === 'plazoSel') setPref({ plazoPapelera: +e.target.value }).then(function () { render(); toast('Plazo de la papelera: ' + plazoTxt(+e.target.value)); }); });
   $('#q').addEventListener('input', function (e) { S.q = e.target.value.trim(); render(); });
-  window.addEventListener('hashchange', function () { S.view = location.hash.slice(1) || 'inicio'; S.q = ''; $('#q').value = ''; if (S.view !== 'compras') S.lista = null; if (S.view !== 'mensajes') S.chat = null; render(); window.scrollTo(0, 0); });
+  window.addEventListener('hashchange', function () { S.view = location.hash.slice(1) || 'inicio'; S.q = ''; $('#q').value = ''; if (S.view !== 'compras') S.lista = null; if (S.view !== 'mensajes') S.chat = null; if (S.view !== 'calendario' && S.view !== 'calendarios') S.verPasados = false; render(); window.scrollTo(0, 0); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { doSync(); revisarAvisos(); } });
 
   /* ================= arranque ================= */
