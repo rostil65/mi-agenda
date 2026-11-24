@@ -231,7 +231,11 @@
     var cc = cals().filter(function (c) { return c.d.tipo === 'cumple' && calVisible(c); })[0];
     if (cc) {
       var md = ds.slice(8, 10) + '-' + ds.slice(5, 7);
-      privados('contacto').forEach(function (k) { if (k.d.cumple === md) out.push({ it: { id: k.id, d: { titulo: 'Cumpleaños de ' + nombreC(k.d), aviso: '1440', fecha: ds }, virtual: true }, c: cc }); });
+      privados('contacto').forEach(function (k) {
+        if (k.d.cumple === md) out.push({ it: { id: k.id, d: { titulo: 'Cumpleaños de ' + nombreC(k.d), aviso: '1440', fecha: ds }, virtual: true }, c: cc });
+        var sa = santoDeDatos(k.d); if (santoCae(sa, ds)) out.push({ it: { id: k.id, d: { titulo: 'Santo de ' + nombreC(k.d) + (sa.s !== 'santo' ? ' – ' + sa.s : ''), aviso: '1440', fecha: ds }, virtual: true }, c: cc });
+      });
+      activos().forEach(function (u) { var su = santoAuto(u.nombre); if (santoCae(su, ds)) out.push({ it: { id: 'u_' + u.id, d: { titulo: 'Santo de ' + u.nombre + ' (familia) – ' + su.s, aviso: '1440', fecha: ds }, virtual: true }, c: cc }); });
     }
     return out.sort(function (x, y) { return (x.it.d.hora || '').localeCompare(y.it.d.hora || ''); });
   }
@@ -284,14 +288,17 @@
     return h + '</div></div><h2>' + fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + '</h2><div class="card list">' + (sl.length ? sl.map(function (o) { return itemEvento(o); }).join('') : '<div class="empty">Sin eventos este día.</div>') + '</div>';
   };
   V.calendarios = function () {
-    var h = '<div class="btns"><button class="btn" data-a="ir" data-v="calendario">‹ Calendario</button><button class="btn pri" data-a="nuevoCal">Nuevo calendario</button></div><h2>Mis calendarios</h2><p class="muted">Son los mismos en las ramas Personal y Trabajo. Toca uno para cambiarle el nombre o el color, o para borrarlo.</p><div class="card list">';
+    var h = '<div class="btns"><button class="btn" data-a="ir" data-v="calendario">‹ Calendario</button><button class="btn pri" data-a="nuevoCal">Nuevo calendario</button></div><h2>Mis calendarios</h2><p class="muted">Son los mismos en las ramas Personal y Trabajo. Toca uno para cambiarle el nombre o el color. Marca varios para moverlos, juntarlos, vaciarlos, borrarlos, mostrarlos u ocultarlos.</p>';
+    var sel = S.calSel || (S.calSel = {}), selIds = calSelIds(), marcables = cals().filter(function (c) { return c.d.tipo !== 'cumple'; });
+    h += '<label class="f inline"><input type="checkbox" id="calTodos"' + (selIds.length && selIds.length === marcables.length ? ' checked' : '') + '>Seleccionar todos</label><div class="card list">';
     h += cals().map(function (c) {
-      var n = privados('evento').filter(function (e) { return e.d.cal === c.id; }).length;
-      return '<div class="item"><span class="dot" style="background:' + c.d.color + '"></span><span class="tx click" data-a="editar" data-id="' + c.id + '"><b>' + esc(c.d.nombre) + '</b><small>' + (c.d.tipo === 'cumple' ? 'Cumpleaños de tus contactos' : n + ' eventos') + (/^auto-/.test(c.d.tipo || '') ? ' · se actualiza cada diciembre' : '') + '</small></span><button class="btn sm" data-a="calActivo" data-id="' + c.id + '">' + (c.d.activo === false ? 'Mostrar' : 'Ocultar') + '</button></div>';
+      var n = eventosDeCal(c.id).length;
+      return '<div class="item">' + (c.d.tipo === 'cumple' ? '<span class="chkpad"></span>' : '<input type="checkbox" class="chk calchk" data-cid="' + c.id + '"' + (sel[c.id] ? ' checked' : '') + ' aria-label="Marcar ' + esc(c.d.nombre) + '">') + '<span class="dot" style="background:' + c.d.color + '"></span><span class="tx click" data-a="editar" data-id="' + c.id + '"><b>' + esc(c.d.nombre) + '</b><small>' + (c.d.tipo === 'cumple' ? 'Cumpleaños y santos de tus contactos' + (n ? ' · ' + n + ' eventos' : '') : n + ' eventos') + (/^auto-/.test(c.d.tipo || '') ? (((pref().autoOff || {})[c.d.tipo]) ? ' · sin actualización automática' : ' · se actualiza cada diciembre') : '') + '</small></span><button class="btn sm" data-a="calActivo" data-id="' + c.id + '">' + (c.d.activo === false ? 'Mostrar' : 'Ocultar') + '</button></div>';
     }).join('') + '</div>';
-    var auto = pref().festivosAuto, y = today.getFullYear();
+    if (selIds.length) h += '<div class="stickybar wrap"><span>' + selIds.length + ' marcado' + (selIds.length > 1 ? 's' : '') + '</span><div class="btns"><button class="btn sm" data-a="calMover">Mover a</button><button class="btn sm" data-a="calJuntar">Juntar</button><button class="btn sm" data-a="calVaciar">Vaciar todo</button><button class="btn sm del" data-a="calBorrar">Borrar</button><button class="btn sm" data-a="calMostrar">Mostrar</button><button class="btn sm" data-a="calOcultar">Ocultar</button></div></div>';
+    var auto = pref().festivosAuto, y = today.getFullYear(), offs = Object.keys(pref().autoOff || {}).filter(function (k) { return (pref().autoOff || {})[k]; });
     h += '<h2>Festivos automáticos</h2><div class="card pad col">' + (auto
-      ? '<p class="muted">Activados: FIESTAS LABORALES (España + Comunidad de Madrid), Festivos Rumanía y Fiestas ortodoxas. Cada diciembre se añade el año siguiente; lo que añadas o corrijas a mano nunca se cambia.</p><div class="row2"><label class="f">Año<select id="festYear"><option>' + y + '</option><option' + (today.getMonth() === 11 ? ' selected' : '') + '>' + (y + 1) + '</option></select></label><div class="btns" style="align-self:end"><button class="btn" data-a="actualizarFestivosYa">Actualizar ahora</button></div></div>'
+      ? '<p class="muted">Activados: FIESTAS LABORALES (España + Comunidad de Madrid), Festivos Rumanía y Fiestas ortodoxas. Cada diciembre se añade el año siguiente; lo que añadas o corrijas a mano nunca se cambia.</p><div class="row2"><label class="f">Año<select id="festYear"><option>' + y + '</option><option' + (today.getMonth() === 11 ? ' selected' : '') + '>' + (y + 1) + '</option></select></label><div class="btns" style="align-self:end"><button class="btn" data-a="actualizarFestivosYa">Actualizar ahora</button></div></div>' + (offs.length ? '<p class="muted">Hay ' + offs.length + ' calendario' + (offs.length > 1 ? 's' : '') + ' automático' + (offs.length > 1 ? 's' : '') + ' desactivado' + (offs.length > 1 ? 's' : '') + '.</p><div class="btns"><button class="btn" data-a="activarFestivos">Volver a activarlos</button></div>' : '')
       : '<p class="muted">Crea tres calendarios que se rellenan solos: FIESTAS LABORALES (nacionales de España y Comunidad de Madrid), Festivos Rumanía y Fiestas ortodoxas.</p><div class="btns"><button class="btn pri" data-a="activarFestivos">Activar festivos automáticos</button></div>') +
       '<p class="muted">Festivos de Alcalá de Henares y puentes de tu empresa:</p><div class="btns"><button class="btn" data-a="marcarAnio" data-v="' + (today.getMonth() === 11 ? y + 1 : y) + '">Opción A: añadir festivos del año</button><button class="btn" data-a="opcionB">Opción B: importar el .ics que te haga Claude</button></div></div>';
     h += '<h2>Importar</h2><div class="card pad col"><span class="muted">Archivos .ics de Google Calendar (Configuración › Importar y exportar › Exportar) u otros. Solo se importan los eventos de hoy en adelante (y los que se repiten). Antes te pregunto en qué calendario guardarlos y qué hacer con los duplicados.</span><div class="btns"><button class="btn" data-a="importar" data-v="ics">Importar archivos .ics</button></div>' +
@@ -330,27 +337,6 @@
     return h;
   };
   function itemsDe(listaId) { return Object.keys(D).map(item).filter(function (it) { return it && it.d.k === 'item' && it.d.lista === listaId && !it.d.papelera; }); }
-  V.compras = function () {
-    var L = S.lista && item(S.lista);
-    if (L) {
-      var items = itemsDe(L.id);
-      var h = '<div class="btns"><button class="btn" data-a="cerrarLista">‹ Listas</button><button class="btn" data-a="editar" data-id="' + L.id + '">' + (L.sh && L.sh.owner !== ME.id ? 'Detalles' : 'Editar / compartir') + '</button><button class="btn" data-a="limpiarLista">Quitar comprados</button></div><h2>' + esc(L.d.nombre) + (L.d.tienda ? ' · ' + esc(L.d.tienda) : '') + '</h2>' + (L.sh ? '<p class="muted">Lista compartida' + etiquetaComp(L) + '. Todos los miembros pueden añadir y marcar.</p>' : '');
-      h += '<form class="card addrow" data-additem="1"><label class="sr" for="itT">Artículo</label><input id="itT" placeholder="Artículo"><label class="sr" for="itC">Categoría</label><select id="itC">' + CATS.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select><label class="sr" for="itQ">Cantidad</label><input id="itQ" placeholder="Cant." class="qty"><button class="btn pri" type="submit">Añadir</button></form>';
-      CATS.forEach(function (c) {
-        var g = items.filter(function (i) { return (i.d.cat || 'Otros') === c; });
-        if (!g.length) return;
-        h += '<div class="grp">' + c + '</div><div class="card list">' + g.map(function (i) {
-          return '<div class="item' + (i.d.ok ? ' done' : '') + '"><input type="checkbox" class="chk" data-a="itemOk" data-id="' + i.id + '"' + (i.d.ok ? ' checked' : '') + ' aria-label="Comprado"><span class="tx"><b>' + esc(i.d.t) + '</b><small>' + esc([i.d.cant, L.sh ? 'añadido por ' + nombre(i.rec.by) : ''].filter(Boolean).join(' · ')) + '</small></span><button class="btn sm del" data-a="itemDel" data-id="' + i.id + '" aria-label="Quitar">✕</button></div>';
-        }).join('') + '</div>';
-      });
-      return h;
-    }
-    var listas = todos('lista').filter(function (x) { return porRama(x.d); });
-    return bandeja() + '<div class="card list">' + (listas.length ? listas.map(function (x) {
-      var n = itemsDe(x.id).filter(function (i) { return !i.d.ok; }).length;
-      return '<div class="item click" data-a="abrirLista" data-id="' + x.id + '"><span class="tx"><b>' + esc(x.d.nombre) + (x.sh ? ' <span class="tag">compartida</span>' : '') + '</b><small>' + (x.d.tienda ? esc(x.d.tienda) + ' · ' : '') + n + ' pendientes' + etiquetaComp(x) + '</small></span>›</div>';
-    }).join('') : '<div class="empty">Sin listas. Pulsa + para crear una (por ejemplo "Compra semanal") y compártela con la familia.</div>') + '</div>';
-  };
   /* --- mensajes --- */
   function chatCon(uid) { return recs('share').filter(function (s) { return s.kind === 'chat' && !s.fam && s.members.length === 2 && s.members.indexOf(uid) >= 0 && s.members.indexOf(ME.id) >= 0; }).sort(function (a, b) { return a.id.localeCompare(b.id); })[0] || null; }
   function msgs(sid) { return Object.keys(D).map(item).filter(function (it) { return it && it.d.k === 'msg' && it.rec.share === sid; }).sort(function (a, b) { return a.d.at - b.d.at; }); }
@@ -399,6 +385,8 @@
       '<div class="btns"><button class="btn" data-a="miColor">Cambiar mi color</button><button class="btn" data-a="cambiarPw">Cambiar contraseña</button><button class="btn" data-a="cambiarUsuario">Cambiar de usuario</button></div></div>';
     h += '<h2>Sincronización</h2>' + conexionHTML();
     h += '<h2>Mis calendarios</h2><div class="card pad"><div class="btns"><button class="btn" data-a="ir" data-v="calendarios">Crear, editar, importar o borrar calendarios</button></div></div>';
+    h += apariencia();
+    h += googleHTML();
     var np = enPapelera().length, pl = pref().plazoPapelera || 90;
     h += '<h2>Papelera</h2><div class="card pad col"><div class="btns"><button class="btn" data-a="ir" data-v="papelera">Abrir papelera (' + np + ')</button></div><label class="f">Eliminar definitivamente lo que lleve en la papelera más de<select id="plazoSel">' + [[30, '1 mes'], [90, '3 meses'], [365, '1 año']].map(function (o) { return '<option value="' + o[0] + '"' + (pl === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label></div>';
     h += '<h2>Importar contactos</h2><div class="card pad"><div class="btns"><button class="btn" data-a="importar" data-v="contactos">Importar de Google (CSV o vCard)</button></div></div>';
@@ -483,9 +471,10 @@
   /* ================= render ================= */
   var MODS = [['inicio', 'Inicio'], ['calendario', 'Calendario'], ['tareas', 'Tareas'], ['contactos', 'Contactos'], ['notas', 'Notas'], ['accesos', 'Accesos'], ['compras', 'Compras'], ['mensajes', 'Mensajes'], ['ajustes', 'Ajustes']];
   function render() {
+    aplicarTema();
     var logged = !!(ME && me());
     document.body.classList.toggle('out', !logged);
-    if (!logged) { $('#main').innerHTML = pantallaEntrada(); $('#nav').innerHTML = ''; $('#who').innerHTML = ''; return; }
+    if (!logged) { $('#main').innerHTML = pantallaEntrada(); $('#nav').innerHTML = ''; $('#who').innerHTML = ''; tick(); return; }
     if (!V[S.view] || (S.view === 'admin' && !isAdmin())) S.view = 'inicio';
     var u = me();
     document.body.classList.toggle('trabajo', rama() === 'trabajo');
@@ -495,11 +484,12 @@
     var nm = noLeidos(), np = pendientes().length;
     $('#nav').innerHTML = mods.map(function (m) {
       var n = m[0] === 'mensajes' ? nm : m[0] === 'inicio' ? np : 0;
-      var on = (S.view === m[0] || ((S.view === 'calendarios' || S.view === 'marcar') && m[0] === 'calendario') || ((S.view === 'duplicados' || S.view === 'revisarNombres') && m[0] === 'contactos') || (S.view === 'papelera' && m[0] === 'ajustes')) && !S.q;
+      var on = (S.view === m[0] || ((S.view === 'calendarios' || S.view === 'marcar') && m[0] === 'calendario') || ((S.view === 'duplicados' || S.view === 'revisarNombres' || S.view === 'gestionar') && m[0] === 'contactos') || (S.view === 'papelera' && m[0] === 'ajustes')) && !S.q;
       return '<a href="#' + m[0] + '" class="' + (on ? 'on' : '') + '">' + svg(m[0]) + '<span>' + m[1] + '</span>' + (n ? '<i class="nb">' + n + '</i>' : '') + '</a>';
-    }).join('');
+    }).join('') + '<div class="reloj-nav" data-a="irHoy" role="button" tabindex="0" aria-label="Ir a hoy">' + relojHTML() + '</div>';
+    tick();
     $('#main').innerHTML = S.q ? buscar(S.q) : V[S.view]();
-    $('#fab').hidden = ['ajustes', 'admin', 'mensajes', 'calendarios', 'papelera', 'duplicados', 'marcar', 'revisarNombres'].indexOf(S.view) >= 0 && !S.q;
+    $('#fab').hidden = ['ajustes', 'admin', 'mensajes', 'calendarios', 'papelera', 'duplicados', 'marcar', 'revisarNombres', 'gestionar'].indexOf(S.view) >= 0 && !S.q;
     if (S.view === 'mensajes' && S.chat) { var ch = document.querySelector('.chat'); if (ch) ch.scrollTop = ch.scrollHeight; }
   }
 
@@ -514,7 +504,7 @@
     tarea: ['Tarea', [['titulo', 'Tarea', 'text', 1], ['vence', 'Fecha límite', 'date'], ['prioridad', 'Prioridad', [['media', 'Media'], ['alta', 'Alta'], ['baja', 'Baja']]], ['rama', 'Rama', RAMAS], ['proyecto', 'Proyecto o categoría', 'text'], ['notas', 'Notas', 'textarea'], ['hecho', 'Hecha', 'checkbox']]],
     nota: ['Nota', [['titulo', 'Título', 'text', 1], ['texto', 'Texto', 'textarea'], ['enlace', 'Enlace (OneNote, Drive…)', 'url'], ['etiquetas', 'Etiquetas', 'text'], ['rama', 'Rama', RAMAS]]],
     acceso: ['Acceso', [['nombre', 'Nombre (ej. Mi banco)', 'text', 1], ['cat', 'Tipo', TIPOS_ACCESO.map(function (t) { return [t, t]; })], ['enlace', 'Enlace o app (https://…, tel:…)', 'text'], ['usuario', 'Usuario (nunca la contraseña)', 'text'], ['ultimos4', 'Tarjeta: solo 4 últimos dígitos', 'text'], ['rama', 'Rama', RAMAS], ['notas', 'Notas', 'textarea']]],
-    lista: ['Lista de compra', [['nombre', 'Nombre de la lista', 'text', 1], ['tienda', 'Tienda', 'text'], ['rama', 'Rama', RAMAS]]],
+    lista: ['Lista de compra (una por tienda)', [['nombre', 'Nombre de la lista', 'text', 1], ['tienda', 'Tienda', 'text'], ['tipoTienda', 'Tipo de tienda', [['fisica', 'Tienda física'], ['online', 'Tienda online (Amazon…)']]], ['rama', 'Rama', RAMAS]]],
     cal: ['Calendario', [['nombre', 'Nombre', 'text', 1], ['color', 'Color', 'color'], ['activo', 'Visible', 'checkbox']]]
   };
   var NUEVO = { inicio: 'evento', calendario: 'evento', tareas: 'tarea', contactos: 'contacto', notas: 'nota', accesos: 'acceso', compras: 'lista' };
@@ -710,7 +700,7 @@
   V.contactos = function () {
     var l = privados('contacto').filter(function (k) { return porRama(k.d); }).sort(function (a, b) { return nombreC(a.d).localeCompare(nombreC(b.d)); });
     var rev = privados('contacto').filter(function (k) { return k.d.revisarNombre; }).length;
-    var h = '<div class="btns"><button class="btn" data-a="importar" data-v="contactos">Importar de Google (CSV o vCard)</button><button class="btn" data-a="ir" data-v="duplicados">Buscar duplicados</button></div>';
+    var h = '<div class="btns"><button class="btn" data-a="importar" data-v="contactos">Importar de Google (CSV o vCard)</button><button class="btn" data-a="ir" data-v="duplicados">Buscar duplicados</button><button class="btn" data-a="ir" data-v="gestionar">Gestionar grupos y campos</button></div>';
     if (rev) h += '<div class="note click" data-a="ir" data-v="revisarNombres">Hay ' + rev + ' nombre' + (rev > 1 ? 's' : '') + ' para revisar (Nombre y Apellidos). Tócame.</div>';
     var g = {};
     l.forEach(function (k) { var n = k.d.grupo || 'Sin grupo'; (g[n] = g[n] || []).push(k); });
@@ -719,7 +709,7 @@
     gk.forEach(function (n) {
       h += '<div class="grp">' + esc(n) + ' · ' + g[n].length + '</div><div class="card list">' + g[n].map(function (k) {
         var ts = telsDe(k.d), ms = mailsDe(k.d), sub = [ts[0] && ts[0].v, ms[0] && ms[0].v, k.d.trabajo && k.d.trabajo.empresa].filter(Boolean).join(' · ');
-        return '<div class="item wrap"><span class="tx click" data-a="editar" data-id="' + k.id + '"><b>' + esc(nombreC(k.d)) + '</b><small>' + esc(sub) + '</small></span>' +
+        return '<div class="item wrap"><span class="tx click" data-a="editar" data-id="' + k.id + '"><b>' + esc(nombreC(k.d)) + (k.d.google ? ' <span class="tag">Google</span>' : '') + '</b><small>' + esc(sub) + '</small></span>' +
           (ts.length ? '<button class="btn sm" data-a="contactar" data-id="' + k.id + '" data-v="tel">Llamar</button><button class="btn sm" data-a="contactar" data-id="' + k.id + '" data-v="wa">WhatsApp</button>' : '') + (ms.length ? '<button class="btn sm" data-a="contactar" data-id="' + k.id + '" data-v="mail">Correo</button>' : '') + '</div>';
       }).join('') + '</div>';
     });
@@ -784,8 +774,8 @@
   }
   /* --- formulario de contacto --- */
   function filaMulti(campo, f, tipo) {
-    var std = ETQ.indexOf(f.l) >= 0, sel = std ? f.l : (f.l ? 'Personalizado' : 'Otro');
-    return '<div class="mrow"><select class="mlab" aria-label="Etiqueta">' + ETQ.concat(['Personalizado']).map(function (o) { return '<option' + (o === sel ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>' +
+    var ops = ETQ.concat(Object.keys(etiquetasPropias(KIND_DE[campo])).sort()), std = ops.indexOf(f.l) >= 0, sel = std ? f.l : (f.l ? 'Personalizado' : 'Otro');
+    return '<div class="mrow"><select class="mlab" aria-label="Etiqueta">' + ops.concat(['Personalizado']).map(function (o) { return '<option' + (o === sel ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>' +
       '<input class="mcus" placeholder="Nombre del campo" value="' + (std ? '' : esc(f.l || '')) + '"' + (sel === 'Personalizado' ? '' : ' hidden') + ' aria-label="Etiqueta personalizada">' +
       '<input class="mval" type="' + tipo + '" value="' + esc(f.v || '') + '" aria-label="Valor"><button type="button" class="btn sm" data-addrow="' + campo + '" data-tipo="' + tipo + '" aria-label="Añadir otro">+</button><button type="button" class="btn sm del" data-delrow="1" aria-label="Quitar">✕</button></div>';
   }
@@ -804,11 +794,12 @@
     var t = d.trabajo || {};
     var personal = '<h4>Datos personales</h4><div class="row2"><label class="f">Nombre<input name="nombre" value="' + esc(d.nombre || '') + '" required></label><label class="f">Apellidos<input name="apellidos" value="' + esc(d.apellidos || '') + '"></label></div>' +
       bloqueMulti('tels', 'Teléfonos', d.tels, 'tel', 'Móvil') + bloqueMulti('emails', 'Correos', d.emails, 'email', 'Casa') + bloqueMulti('dirs', 'Direcciones', d.dirs, 'text', 'Casa') +
-      '<div class="row2"><label class="f">Cumpleaños (DD-MM)<input name="cumple" value="' + esc(d.cumple || '') + '" placeholder="15-12" pattern="\\d{2}-\\d{2}"></label><label class="f">Grupo<input name="grupo" value="' + esc(d.grupo || '') + '" placeholder="Familia, Médicos…"></label></div>' +
+      '<div class="row2"><label class="f">Cumpleaños (DD-MM)<input name="cumple" value="' + esc(d.cumple || '') + '" placeholder="15-12" pattern="\\d{2}-\\d{2}"></label><label class="f">Grupo<select name="grupoSel" class="gsel"><option value="">Sin grupo</option>' + Object.keys(gruposUsados()).sort().map(function (g) { return '<option value="' + esc(g) + '"' + (g === d.grupo ? ' selected' : '') + '>' + esc(g) + '</option>'; }).join('') + '<option value="__p">Personalizado</option></select><input name="grupoNuevo" class="gnew" placeholder="Nombre del grupo nuevo" hidden></label></div>' +
+      (function () { var sa = d.santo || { modo: 'auto' }, au = santoAuto(d.nombre); return '<div class="row2"><label class="f">Santo (onomástica)<select name="santoModo" class="ssel"><option value="auto"' + (sa.modo === 'auto' ? ' selected' : '') + '>Automático' + (au ? ' (' + dmTxt(au.dm) + ')' : ' (nombre no reconocido)') + '</option><option value="fecha"' + (sa.modo === 'fecha' ? ' selected' : '') + '>Elegir fecha</option><option value="ninguno"' + (sa.modo === 'ninguno' ? ' selected' : '') + '>Ninguno</option></select></label><label class="f sfecha"' + (sa.modo === 'fecha' ? '' : ' hidden') + '>Fecha del santo (DD-MM)<input name="santoFecha" value="' + esc(sa.fecha || '') + '" placeholder="08-11" pattern="\\d{2}-\\d{2}"></label></div>'; })() +
       '<label class="f">Rama<select name="rama">' + RAMAS.map(function (o) { return '<option value="' + o[0] + '"' + (d.rama === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>';
     var trabajo = '<h4>Datos de trabajo</h4><div class="row2"><label class="f">Empresa<input name="empresa" value="' + esc(t.empresa || '') + '"></label><label class="f">Cargo<input name="cargo" value="' + esc(t.cargo || '') + '"></label></div>' +
       bloqueMulti('ttels', 'Teléfonos de trabajo', t.tels, 'tel', 'Fijo') + bloqueMulti('temails', 'Correos de trabajo', t.emails, 'email', 'Otro') + bloqueMulti('tdirs', 'Direcciones de trabajo', t.dirs, 'text', 'Otro');
-    var h = '<h3>' + (it ? 'Contacto' : 'Nuevo contacto') + '</h3>' + (rama() === 'trabajo' ? trabajo + personal : personal + trabajo) +
+    var h = '<h3>' + (it ? 'Contacto' : 'Nuevo contacto') + (d.google ? ' <span class="tag">Google</span>' : '') + '</h3>' + (d.google ? '<p class="note">Nombre, teléfonos y correos se cambian en el móvil o en Google. Aquí puedes añadir notas, datos de trabajo y el santo.</p>' : '') + (rama() === 'trabajo' ? trabajo + personal : personal + trabajo) +
       '<h4>Notas</h4><label class="f"><span class="sr">Notas</span><textarea name="notas">' + esc(d.notas || '') + '</textarea></label>' +
       '<div class="btns"><button class="btn pri" value="ok">Guardar</button><button class="btn" value="cancel" formnovalidate>Cancelar</button>' + (it ? '<button class="btn del" type="button" data-a="borrar" data-id="' + it.id + '">Borrar</button>' : '') + '</div>';
     var frm = $('#frm');
@@ -818,13 +809,18 @@
       if (add) { var lst = add.closest('.mlist'); add.closest('.mrow').insertAdjacentHTML('afterend', filaMulti(add.dataset.addrow, { l: lst.dataset.def, v: '' }, add.dataset.tipo)); }
       if (del) { var row = del.closest('.mrow'), l2 = row.closest('.mlist'); if (l2.querySelectorAll('.mrow').length > 1) row.remove(); else row.querySelector('.mval').value = ''; }
     };
-    frm.onchange = function (e) { if (e.target.classList.contains('mlab')) { var c = e.target.parentNode.querySelector('.mcus'); c.hidden = e.target.value !== 'Personalizado'; if (!c.hidden) c.focus(); } };
+    frm.onchange = function (e) {
+      if (e.target.classList.contains('mlab')) { var c = e.target.parentNode.querySelector('.mcus'); c.hidden = e.target.value !== 'Personalizado'; if (!c.hidden) c.focus(); }
+      if (e.target.classList.contains('gsel')) { var g = frm.querySelector('.gnew'); g.hidden = e.target.value !== '__p'; if (!g.hidden) g.focus(); }
+      if (e.target.classList.contains('ssel')) frm.querySelector('.sfecha').hidden = e.target.value !== 'fecha';
+    };
     frm.onsubmit = async function (e) {
       if (e.submitter && e.submitter.value === 'cancel') return;
       e.preventDefault();
       var fd = new FormData(frm);
       var nd = Object.assign({}, d, { k: 'contacto', nombre: (fd.get('nombre') || '').trim(), apellidos: (fd.get('apellidos') || '').trim(), tels: leerMulti(frm, 'tels'), emails: leerMulti(frm, 'emails'), dirs: leerMulti(frm, 'dirs'),
-        cumple: (fd.get('cumple') || '').trim(), grupo: (fd.get('grupo') || '').trim(), rama: fd.get('rama'), notas: (fd.get('notas') || '').trim(), revisarNombre: false,
+        cumple: (fd.get('cumple') || '').trim(), grupo: fd.get('grupoSel') === '__p' ? (fd.get('grupoNuevo') || '').trim() : (fd.get('grupoSel') || ''), rama: fd.get('rama'), notas: (fd.get('notas') || '').trim(), revisarNombre: false,
+        santo: { modo: fd.get('santoModo') || 'auto', fecha: (fd.get('santoFecha') || '').trim() },
         trabajo: { empresa: (fd.get('empresa') || '').trim(), cargo: (fd.get('cargo') || '').trim(), tels: leerMulti(frm, 'ttels'), emails: leerMulti(frm, 'temails'), dirs: leerMulti(frm, 'tdirs') } });
       var texto = [nd.notas, nd.trabajo.empresa, nd.trabajo.cargo].concat(nd.dirs.map(function (x) { return x.v; })).join(' ');
       if (/\d[\d -]{11,}\d/.test(texto)) { alert('Por seguridad no guardes números de tarjeta o de cuenta completos.'); return; }
@@ -984,8 +980,8 @@
       function (frm) { frm.querySelectorAll('.dupsel').forEach(function (s) { s.value = 'borrar'; }); frm.onchange = function (e) { if (e.target.id === 'dupTodos' && e.target.value) frm.querySelectorAll('.dupsel').forEach(function (s) { s.value = e.target.value; }); }; });
     for (var j = 0; j < dups.length; j++) {
       var v = r ? r.get('d' + j) : 'borrar', p = dups[j];
-      if (v === 'borrar' || !v) R.dup++;
-      else if (v === 'sust') { var nd = Object.assign({}, p.x.d, { titulo: p.e.titulo, fecha: p.e.fecha, hora: p.e.hora, repetir: p.e.repetir, hasta: p.e.hasta, lugar: p.e.lugar || p.x.d.lugar, notas: p.e.notas || p.x.d.notas }); await putObj(ME, p.x.id, nd, p.x.sh ? p.x.sh.id : ''); R.sust++; }
+      if (v === 'borrar' || !v) { R.dup++; if (opt.onBorrar) opt.onBorrar(p.e); }
+      else if (v === 'sust') { var nd = Object.assign({}, p.x.d, { titulo: p.e.titulo, fecha: p.e.fecha, hora: p.e.hora, repetir: p.e.repetir, hasta: p.e.hasta, lugar: p.e.lugar || p.x.d.lugar, notas: p.e.notas || p.x.d.notas }, p.e.gev ? { gev: p.e.gev, gcal: p.e.gcal } : {}); await putObj(ME, p.x.id, nd, p.x.sh ? p.x.sh.id : ''); R.sust++; }
       else { await putObj(ME, null, Object.assign({}, p.e, { cal: v.slice(4) }), ''); R.imp++; }
     }
   }
@@ -1075,7 +1071,8 @@
     if (!es) avisos.push('No se pudo conectar con el servicio de festivos de España: se usó la lista básica (nacionales y Madrid). Revísala.');
     var rol = ro ? ro.filter(function (h) { return esPublico(h) && h.nacional !== false; }).map(function (h) { return { titulo: nombreRO(h, y), fecha: h.fecha }; }) : basicoRO(y);
     if (!ro) avisos.push('Rumanía: se usó la lista calculada.');
-    var sets = [['lab', lab], ['ro', rol], ['ort', ortodoxas(y)]];
+    var off = pref().autoOff || {};
+    var sets = [['lab', lab], ['ro', rol], ['ort', ortodoxas(y)]].filter(function (x) { return !off[AUTO[x[0]].tipo]; });
     for (var i = 0; i < sets.length; i++) {
       var cid = await asegurarCalAuto(sets[i][0]);
       var evs = sets[i][1].filter(function (e) { return e.fecha >= hoy; }).map(function (e) { return { k: 'evento', titulo: e.titulo, fecha: e.fecha, hora: '', repetir: 'no', hasta: '', aviso: '', lugar: '', notas: '', origen: 'auto' }; });
@@ -1127,6 +1124,11 @@
     } finally { mantOcupado = false; }
     if (cambio) commit();
     var p = pref(), y = today.getFullYear();
+    var gConf = (p.gContactos || Object.keys(p.gmap || {}).some(function (k) { return p.gmap[k] && p.gmap[k] !== 'no'; })) && gClientId();
+    if (gConf && !gOcupado && (!p.gLast || Date.now() - p.gLast > 30 * 60000)) {
+      if (gValido()) setTimeout(function () { gSync(false); }, 2000);
+      else if (gTok() && dev.recordado && dev.recordado[ME.id] && !sessionStorage.getItem('miagenda.gSilent') && (!p.gLast || Date.now() - p.gLast > 6 * 3600000)) { sessionStorage.setItem('miagenda.gSilent', '1'); setTimeout(function () { gLogin(true); }, 2500); }
+    }
     if (p.festivosAuto && today.getMonth() === 11 && (p.festivosYear || 0) < y + 1 && !S.festEnCurso) {
       S.festEnCurso = true;
       setTimeout(async function () {
@@ -1134,6 +1136,362 @@
         S.festEnCurso = false;
       }, 1500);
     }
+  }
+
+  /* ================= cambio 5: desplegables con «Personalizado» y Gestionar ================= */
+  var KIND_DE = { tels: 'tel', ttels: 'tel', emails: 'mail', temails: 'mail', dirs: 'dir', tdirs: 'dir' };
+  function camposDe(d, kind) { var t = d.trabajo || {}; return kind === 'tel' ? (d.tels || []).concat(t.tels || []) : kind === 'mail' ? (d.emails || []).concat(t.emails || []) : (d.dirs || []).concat(t.dirs || []); }
+  function etiquetasPropias(kind) { var c = {}; privados('contacto').forEach(function (k) { camposDe(k.d, kind).forEach(function (f) { if (f && f.l && ETQ.indexOf(f.l) < 0) c[f.l] = (c[f.l] || 0) + 1; }); }); return c; }
+  function gruposUsados() { var c = {}; privados('contacto').forEach(function (k) { if (k.d.grupo) c[k.d.grupo] = (c[k.d.grupo] || 0) + 1; }); return c; }
+  function itemsEditables() { return Object.keys(D).map(item).filter(function (it) { return it && it.d.k === 'item' && !it.d.papelera && (!it.sh || aceptado(it.sh)); }); }
+  function catsPropias() { var c = {}; itemsEditables().forEach(function (i) { var x = i.d.cat; if (x && CATS.indexOf(x) < 0) c[x] = (c[x] || 0) + 1; }); return c; }
+  V.gestionar = function () {
+    function seccion(titulo, tipo, obj, nota) {
+      var ks = Object.keys(obj).sort();
+      return '<h2>' + titulo + '</h2>' + (nota ? '<p class="muted">' + nota + '</p>' : '') + '<div class="card list">' + (ks.length ? ks.map(function (k) {
+        return '<div class="item wrap"><span class="tx"><b>' + esc(k) + '</b><small>' + obj[k] + ' en uso</small></span><button class="btn sm" data-a="gesRen" data-t="' + tipo + '" data-v="' + esc(k) + '">Renombrar</button><button class="btn sm del" data-a="gesDel" data-t="' + tipo + '" data-v="' + esc(k) + '">Borrar</button></div>';
+      }).join('') : '<div class="empty">Ninguno todavía.</div>') + '</div>';
+    }
+    return '<div class="btns"><button class="btn" data-a="ir" data-v="contactos">‹ Contactos</button><button class="btn" data-a="ir" data-v="compras">‹ Compras</button></div><h2>Gestionar grupos, campos y categorías</h2><p class="muted">Aquí salen los que has creado tú (con «Personalizado» u «Otra…»). Los que ya no usa nadie desaparecen solos.</p>' +
+      seccion('Grupos de contactos', 'grupo', gruposUsados(), 'Si borras un grupo, sus contactos quedan «Sin grupo».') +
+      seccion('Nombres de campo · teléfonos', 'tel', etiquetasPropias('tel'), 'Si borras uno, esos campos pasan a llamarse «Otro».') +
+      seccion('Nombres de campo · correos', 'mail', etiquetasPropias('mail')) +
+      seccion('Nombres de campo · direcciones', 'dir', etiquetasPropias('dir')) +
+      seccion('Categorías de compras', 'cat', catsPropias(), 'Las fijas (Lácteos, Limpieza…) no se cambian. Si borras una, sus artículos pasan a «Otros».');
+  };
+  async function renombrarEn(tipo, viejo, nuevo) {
+    var n = 0;
+    if (tipo === 'cat') {
+      var its = itemsEditables().filter(function (i) { return i.d.cat === viejo; });
+      for (var i = 0; i < its.length; i++) { await putObj(ME, its[i].id, Object.assign({}, its[i].d, { cat: nuevo || 'Otros' }), its[i].rec.share); n++; }
+      return n;
+    }
+    var cs = privados('contacto');
+    for (var j = 0; j < cs.length; j++) {
+      var nd = JSON.parse(JSON.stringify(cs[j].d)), cambio = false;
+      if (tipo === 'grupo') { if (nd.grupo === viejo) { nd.grupo = nuevo; cambio = true; } }
+      else {
+        var ks = { tel: ['tels'], mail: ['emails'], dir: ['dirs'] }[tipo][0];
+        [nd[ks] || [], (nd.trabajo || {})[ks] || []].forEach(function (arr) { arr.forEach(function (f) { if (f.l === viejo) { f.l = nuevo || 'Otro'; cambio = true; } }); });
+      }
+      if (cambio) { await putObj(ME, cs[j].id, nd, ''); n++; }
+    }
+    return n;
+  }
+
+  /* ================= cambio 7: santos (onomásticas) del calendario ortodoxo rumano ================= */
+  var SANTOS = [
+    [['mihai', 'mihaela', 'mihail', 'mihaita', 'gabriel', 'gabriela', 'gavril'], '11-08', 'Sf. Arhangheli Mihail și Gavriil'],
+    [['andrei', 'andreea'], '11-30', 'Sf. Andrei'],
+    [['nicolae', 'nicoleta', 'nicu', 'niculina', 'nicusor'], '12-06', 'Sf. Nicolae'],
+    [['ion', 'ioan', 'ioana', 'ionut', 'ionela', 'ionel', 'ionica', 'iona'], '01-07', 'Sf. Ioan Botezătorul'],
+    [['gheorghe', 'george', 'georgiana', 'georgeta', 'gigel', 'georgel'], '04-23', 'Sf. Mare Mucenic Gheorghe'],
+    [['constantin', 'costel', 'costin', 'costica', 'elena', 'ileana', 'elenuta'], '05-21', 'Sf. Împărați Constantin și Elena'],
+    [['petru', 'petrica', 'petronela', 'pavel', 'paul', 'paula', 'pavelina'], '06-29', 'Sf. Apostoli Petru și Pavel'],
+    [['ilie', 'ilinca'], '07-20', 'Sf. Proroc Ilie'],
+    [['ana', 'anca', 'anuta'], '07-25', 'Adormirea Sf. Ana'],
+    [['maria', 'marian', 'mariana', 'marioara', 'maricica', 'mariuca'], '08-15', 'Adormirea Maicii Domnului (Sfânta Maria Mare)'],
+    [['alexandru', 'alexandra', 'alex', 'sandu'], '08-30', 'Sf. Alexandru, Ioan și Pavel cei Noi'],
+    [['parascheva', 'paraschiva', 'paraschiv'], '10-14', 'Sf. Cuvioasă Parascheva'],
+    [['dumitru', 'dumitrita', 'dimitrie', 'dumitra', 'mitica', 'dan'], '10-26', 'Sf. Mare Mucenic Dimitrie'],
+    [['ecaterina', 'catalina', 'catalin', 'cati'], '11-25', 'Sf. Mare Muceniță Ecaterina'],
+    [['vasile', 'vasilica', 'vasilisa'], '01-01', 'Sf. Vasile cel Mare'],
+    [['grigore', 'grigorie'], '01-25', 'Sf. Grigorie Teologul'],
+    [['stefan', 'stefania', 'stefana', 'stefanita'], '12-27', 'Sf. Arhidiacon Ștefan'],
+    [['florin', 'florina', 'florentina', 'florica', 'floarea', 'florian', 'florinel', 'flori'], 'florii', 'Floriile (domingo de Ramos ortodoxo)']
+  ];
+  function santoAuto(nombreStr) {
+    var n = norm(String(nombreStr || '').split(/[\s-]+/)[0]).replace(/ /g, '');
+    for (var i = 0; i < SANTOS.length; i++) if (SANTOS[i][0].indexOf(n) >= 0) return { dm: SANTOS[i][1], s: SANTOS[i][2] };
+    return null;
+  }
+  function santoDeDatos(d) {
+    var sa = d.santo || { modo: 'auto' };
+    if (sa.modo === 'ninguno') return null;
+    if (sa.modo === 'fecha') { var m = /^(\d{2})-(\d{2})$/.exec(sa.fecha || ''); return m ? { dm: m[2] + '-' + m[1], s: 'santo' } : null; }
+    return santoAuto(d.nombre);
+  }
+  function santoCae(s, ds) { if (!s) return false; if (s.dm === 'florii') return ds === dmas(pascuaOrtodoxa(+ds.slice(0, 4)), -7); return ds.slice(5) === s.dm; }
+  function dmTxt(dm) { if (dm === 'florii') return 'domingo de Ramos ortodoxo'; var p = dm.split('-'); return (+p[1]) + ' de ' + MESES[+p[0] - 1]; }
+
+  /* ================= cambio 6: varios calendarios a la vez ================= */
+  function eventosDeCal(cid) { return todos('evento').filter(function (e) { var c = calDe(e); return c && c.id === cid; }); }
+  function futuros(evs) { var hoy = hoyStr(); return evs.filter(function (e) { return e.d.fecha >= hoy || ((e.d.repetir || 'no') !== 'no' && (!e.d.hasta || e.d.hasta >= hoy)); }); }
+  async function moverEventos(srcIds, destId, anual) {
+    var moving = [];
+    srcIds.forEach(function (id) { if (id !== destId) moving = moving.concat(eventosDeCal(id)); });
+    var destEvs = eventosDeCal(destId), pares = [];
+    moving.forEach(function (e, i) {
+      var sim = function (y) { return (ocurre(y.d, e.d.fecha) || ocurre(e.d, y.d.fecha)) && parecido(y.d.titulo, e.d.titulo); };
+      var x = destEvs.filter(sim)[0] || moving.slice(0, i).filter(function (y) { return (calDe(y) || {}).id !== (calDe(e) || {}).id && sim(y); })[0];
+      if (x) pares.push({ e: e, x: x });
+    });
+    var borrar = {};
+    if (pares.length) {
+      var r = await dialogo('<h3>' + pares.length + ' posible' + (pares.length > 1 ? 's' : '') + ' duplicado' + (pares.length > 1 ? 's' : '') + '</h3><p class="muted">Antes de mover, estos eventos coinciden en fecha y tienen un nombre parecido a otro.</p>' +
+        '<label class="f">Aplicar a todos<select id="dupTodos"><option value="">— elegir —</option><option value="mantener">Mantener los dos</option><option value="borrar">Borrar el que se mueve</option></select></label><div class="card list">' +
+        pares.map(function (p, i) { return '<div class="item wrap"><span class="tx"><b>' + esc(p.e.d.titulo) + '</b><small>' + fechaLarga(p.e.d.fecha) + ' · de «' + esc((calDe(p.e) || { d: {} }).d.nombre || '') + '» · ya hay «' + esc(p.x.d.titulo) + '»</small></span><select name="p' + i + '" class="mini dupsel" aria-label="Qué hacer"><option value="mantener">Mantener los dos</option><option value="borrar">Borrar el que se mueve</option></select></div>'; }).join('') +
+        '</div><div class="btns"><button class="btn pri" value="ok">Continuar</button><button class="btn" value="cancel" formnovalidate>Cancelar</button></div>',
+        function (frm) { frm.onchange = function (e) { if (e.target.id === 'dupTodos' && e.target.value) frm.querySelectorAll('.dupsel').forEach(function (s) { s.value = e.target.value; }); }; });
+      if (!r) return null;
+      pares.forEach(function (p, i) { if (r.get('p' + i) === 'borrar') borrar[p.e.id] = 1; });
+    }
+    var R = { mov: 0, del: 0 }, aBorrar = [];
+    for (var i = 0; i < moving.length; i++) {
+      var e = moving[i];
+      if (borrar[e.id]) { if (e.sh) setAcc(ME.id, e.sh.id, 'salido'); else aBorrar.push(e); R.del++; continue; }
+      if (e.sh) setAcc(ME.id, e.sh.id, 'aceptado', destId);
+      else await putObj(ME, e.id, Object.assign({}, e.d, { cal: destId }, anual && (!e.d.repetir || e.d.repetir === 'no') ? { repetir: 'anual' } : {}), '');
+      R.mov++;
+    }
+    if (aBorrar.length) await aPapelera(aBorrar, 'duplicado al mover');
+    return R;
+  }
+  async function borrarCals(ids) {
+    var restantes = cals().filter(function (c) { return c.d.tipo !== 'cumple' && ids.indexOf(c.id) < 0; });
+    if (!restantes.length) { alert('Necesitas al menos un calendario.'); return false; }
+    var off = Object.assign({}, pref().autoOff || {}), cambiaOff = false;
+    for (var i = 0; i < ids.length; i++) {
+      var c = item(ids[i]); if (!c || c.d.tipo === 'cumple') continue;
+      recs('acc').filter(function (a) { return a.user === ME.id && a.cal === c.id; }).forEach(function (a) { a.cal = restantes[0].id; save(a); });
+      await aPapelera([c].concat(privados('evento').filter(function (e) { return e.d.cal === c.id; })), '');
+      if (/^auto-/.test(c.d.tipo || '')) { off[c.d.tipo] = true; cambiaOff = true; }
+    }
+    if (cambiaOff) await setPref({ autoOff: off });
+    return true;
+  }
+  async function preguntarVacios(ids) {
+    for (var i = 0; i < ids.length; i++) {
+      var c = item(ids[i]); if (!c || c.d.papelera || c.d.tipo === 'cumple') continue;
+      if (futuros(eventosDeCal(c.id)).length) continue;
+      if (confirm('El calendario «' + c.d.nombre + '» se ha quedado sin eventos futuros. ¿Borrarlo?' + (/^auto-/.test(c.d.tipo || '') ? '\n\nSi lo borras, también se desactiva su actualización de diciembre.' : ''))) await borrarCals([c.id]);
+    }
+  }
+  function calSelIds() { return Object.keys(S.calSel || {}).filter(function (id) { var c = item(id); return c && !c.d.papelera; }); }
+
+  /* ================= cambio 7: sincronización con Google (de Google hacia la agenda) ================= */
+  var GSCOPES = 'openid email https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly';
+  function gClientId() { return window.MIAGENDA_GOOGLE_CLIENT_ID || dev.gClientId || ''; }
+  function gTokDe(uid) { try { return JSON.parse(localStorage.getItem('miagenda.gtok.' + uid)) || null; } catch (e) { return null; } }
+  function gTok() { return ME ? gTokDe(ME.id) : null; }
+  function gValido() { var t = gTok(); return !!(t && t.access && Date.now() < t.exp); }
+  function gLogin(silent) {
+    if (!gClientId()) { alert('Falta el ID de cliente de Google (ver guía).'); return; }
+    var st = 'g' + C.rid(14), t = gTok();
+    sessionStorage.setItem('miagenda.gstate', JSON.stringify({ s: st, uid: ME.id, silent: !!silent }));
+    var p = new URLSearchParams({ client_id: gClientId(), redirect_uri: window.Sync.redirectUri(), response_type: 'token', scope: GSCOPES, state: st, include_granted_scopes: 'true', prompt: silent ? 'none' : 'select_account' });
+    if (t && t.hint) p.set('login_hint', t.hint);
+    location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + p.toString());
+  }
+  function gRetorno() {
+    var h = location.hash || '';
+    if (!/(access_token|error)=/.test(h) || !/state=g/.test(h)) return null;
+    var q = new URLSearchParams(h.slice(1)), saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem('miagenda.gstate')); } catch (e) {}
+    history.replaceState(null, '', window.Sync.redirectUri()); sessionStorage.removeItem('miagenda.gstate');
+    if (!saved || saved.s !== q.get('state')) return { error: 'La respuesta de Google no coincide.' };
+    if (q.get('error')) return { error: q.get('error'), silent: saved.silent, uid: saved.uid };
+    var prev = gTokDe(saved.uid) || {};
+    localStorage.setItem('miagenda.gtok.' + saved.uid, JSON.stringify({ access: q.get('access_token'), exp: Date.now() + ((+q.get('expires_in') || 3600) - 60) * 1000, hint: prev.hint || '' }));
+    return { ok: true, uid: saved.uid };
+  }
+  async function gApi(url) {
+    var t = gTok(); if (!t || !t.access) throw new Error('auth');
+    var r = await fetch(url, { headers: { Authorization: 'Bearer ' + t.access } });
+    if (r.status === 401) { var x = gTok(); if (x) { x.access = ''; localStorage.setItem('miagenda.gtok.' + ME.id, JSON.stringify(x)); } throw new Error('auth'); }
+    if (!r.ok) throw new Error('Google respondió ' + r.status);
+    return r.json();
+  }
+  async function gCalendarios() { var j = await gApi('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250'); return (j.items || []).map(function (c) { return { id: c.id, nombre: c.summaryOverride || c.summary || c.id, color: c.backgroundColor || '#0369A1' }; }); }
+  async function gEventos(calId) {
+    var out = [], tok = '', hoy = hoyStr();
+    do {
+      var j = await gApi('https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events?maxResults=2500&singleEvents=false' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
+      (j.items || []).forEach(function (e) {
+        if (e.status === 'cancelled' || !e.start) return;
+        var dt = e.start.dateTime ? new Date(e.start.dateTime) : null, f = e.start.date || (dt ? ymd(dt) : ''), h = dt ? pad(dt.getHours()) + ':' + pad(dt.getMinutes()) : '';
+        var rr = (e.recurrence || []).filter(function (x) { return /^RRULE/.test(x); })[0] || '', until = /UNTIL=(\d{8})/.exec(rr);
+        var rep = /YEARLY/.test(rr) ? 'anual' : /MONTHLY/.test(rr) ? 'mensual' : /WEEKLY/.test(rr) ? 'semanal' : /DAILY/.test(rr) ? 'diario' : 'no', hasta = until ? icsDate(until[1]).f : '';
+        if (!(f >= hoy || (rep !== 'no' && (!hasta || hasta >= hoy)))) return;
+        out.push({ k: 'evento', titulo: e.summary || '(sin título)', fecha: f, hora: h, repetir: rep, hasta: hasta, lugar: e.location || '', notas: String(e.description || '').slice(0, 500), aviso: '', gev: e.id, gcal: calId });
+      });
+      tok = j.nextPageToken;
+    } while (tok);
+    return out;
+  }
+  function mapPersona(p, grupos) {
+    var c = nuevoContactoVacio(pref().gRama || 'personal'), n = (p.names || [])[0] || {};
+    c.nombre = [n.givenName, n.middleName].filter(Boolean).join(' '); c.apellidos = n.familyName || '';
+    if (!c.nombre && !c.apellidos && n.displayName) { var sp = n.displayName.split(/\s+/); c.nombre = sp[0]; c.apellidos = sp.slice(1).join(' '); }
+    (p.phoneNumbers || []).forEach(function (x) { pon(c, 'tels', x.formattedType || x.type || 'Otro', x.value); });
+    (p.emailAddresses || []).forEach(function (x) { pon(c, 'emails', x.formattedType || x.type || 'Otro', x.value); });
+    (p.addresses || []).forEach(function (x) { pon(c, 'dirs', x.formattedType || x.type || 'Otro', String(x.formattedValue || '').replace(/\n/g, ', ')); });
+    var o = (p.organizations || [])[0]; if (o) { c.trabajo.empresa = o.name || ''; c.trabajo.cargo = o.title || ''; }
+    var b = (p.birthdays || []).map(function (x) { return x.date; }).filter(function (x) { return x && x.month && x.day; })[0]; if (b) c.cumple = pad(b.day) + '-' + pad(b.month);
+    c.grupo = (p.memberships || []).map(function (m) { return m.contactGroupMembership && grupos[m.contactGroupMembership.contactGroupResourceName]; }).filter(Boolean)[0] || '';
+    c.gid = p.resourceName; c.google = true;
+    return c;
+  }
+  async function gContactos() {
+    var grupos = {};
+    try { var gj = await gApi('https://people.googleapis.com/v1/contactGroups?pageSize=200'); (gj.contactGroups || []).forEach(function (g) { if (g.groupType === 'USER_CONTACT_GROUP') grupos[g.resourceName] = g.formattedName || g.name; }); } catch (e) { if (e.message === 'auth') throw e; }
+    var out = [], tok = '';
+    do {
+      var j = await gApi('https://people.googleapis.com/v1/people/me/connections?pageSize=1000&personFields=names,phoneNumbers,emailAddresses,addresses,organizations,birthdays,memberships' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
+      (j.connections || []).forEach(function (p) { out.push(mapPersona(p, grupos)); });
+      tok = j.nextPageToken;
+    } while (tok);
+    return out.filter(function (c) { return c.nombre || c.apellidos; });
+  }
+  /* 7.2: manda Google en lo que viene de allí; se conserva lo añadido solo en la agenda */
+  function aplicarGoogle(local, g) {
+    var prev = local.gsnap || {}, key = function (v) { return telKey(v) || norm(v); };
+    function arr(campo, sub) {
+      var get = function (o) { return (sub ? ((o.trabajo || {})[campo]) : o[campo]) || []; };
+      var gv = get(g), pk = get(prev).map(function (f) { return key(f.v); });
+      var extra = get(local).filter(function (f) { return pk.indexOf(key(f.v)) < 0 && !gv.some(function (x) { return key(x.v) === key(f.v); }); });
+      return gv.concat(extra);
+    }
+    var lt = local.trabajo || {};
+    var nd = Object.assign({}, local, { nombre: g.nombre || local.nombre, apellidos: g.apellidos || local.apellidos, tels: arr('tels'), emails: arr('emails'), dirs: arr('dirs'), cumple: g.cumple || local.cumple || '', grupo: g.grupo || local.grupo || '', google: true, gid: g.gid, revisarNombre: false });
+    nd.trabajo = Object.assign({}, lt, { empresa: g.trabajo.empresa || lt.empresa || '', cargo: g.trabajo.cargo || lt.cargo || '', tels: arr('tels', 1), emails: arr('emails', 1), dirs: arr('dirs', 1) });
+    nd.gsnap = { tels: g.tels, emails: g.emails, dirs: g.dirs, trabajo: { tels: g.trabajo.tels, emails: g.trabajo.emails, dirs: g.trabajo.dirs } };
+    return nd;
+  }
+  var gOcupado = false;
+  async function gSync(manual) {
+    if (!ME || gOcupado) return null;
+    if (!gValido()) { if (manual) gLogin(false); return null; }
+    gOcupado = true;
+    var p = pref(), R = { ev: 0, evDel: 0, con: 0, conNew: 0, conDel: 0, pas: 0, dup: 0, imp: 0, sust: 0, ya: 0 };
+    try {
+      var gmap = Object.assign({}, p.gmap || {}), ign = (p.gIgnorar || []).slice();
+      var gids = Object.keys(gmap);
+      for (var i = 0; i < gids.length; i++) {
+        var gid = gids[i], dest = gmap[gid];
+        if (!dest || dest === 'no') continue;
+        if (dest === '__nuevo' || !item(dest) || item(dest).d.papelera) { dest = await putObj(ME, null, { k: 'cal', nombre: ((p.gnombres || {})[gid] || 'Google'), color: ((p.gcolores || {})[gid] || '#0369A1'), rama: 'ambas', activo: true, tipo: 'importado' }, ''); gmap[gid] = dest; }
+        var evs = await gEventos(gid), byG = {};
+        privados('evento').filter(function (e) { return e.d.gcal === gid; }).forEach(function (e) { byG[e.d.gev] = e; });
+        var nuevos = [];
+        for (var j = 0; j < evs.length; j++) {
+          var ev = evs[j], x = byG[ev.gev];
+          if (x) { delete byG[ev.gev]; var nd = Object.assign({}, x.d, ev, { cal: x.d.cal, aviso: x.d.aviso }); if (JSON.stringify(nd) !== JSON.stringify(x.d)) { await putObj(ME, x.id, nd, ''); R.ev++; } }
+          else if (ign.indexOf(ev.gev) < 0) nuevos.push(ev);
+        }
+        if (nuevos.length) await procesarEventos(nuevos, dest, R, { onBorrar: function (e) { ign.push(e.gev); } });
+        var quitados = Object.values(byG);
+        if (quitados.length) { await aPapelera(quitados, 'borrado en Google'); R.evDel += quitados.length; }
+      }
+      if (p.gContactos) {
+        var gc = await gContactos(), locales = privados('contacto'), porGid = {};
+        locales.forEach(function (k) { if (k.d.gid) porGid[k.d.gid] = k; });
+        for (var c = 0; c < gc.length; c++) {
+          var g = gc[c], loc = porGid[g.gid];
+          if (loc) delete porGid[g.gid]; else { loc = contactoCoincide(g); if (loc && loc.d.gid) loc = null; }
+          if (loc) { var nd2 = aplicarGoogle(loc.d, g); if (JSON.stringify(nd2) !== JSON.stringify(loc.d)) { await putObj(ME, loc.id, nd2, ''); R.con++; } }
+          else { g.gsnap = { tels: g.tels, emails: g.emails, dirs: g.dirs, trabajo: { tels: g.trabajo.tels, emails: g.trabajo.emails, dirs: g.trabajo.dirs } }; await putObj(ME, null, g, ''); R.conNew++; }
+        }
+        var borrados = Object.values(porGid).filter(function (k) { return k.d.google; });
+        if (borrados.length) { await aPapelera(borrados, 'borrado en Google'); R.conDel = borrados.length; }
+      }
+      await setPref({ gmap: gmap, gIgnorar: ign.slice(-2000), gLast: Date.now() });
+    } catch (e) {
+      if (e.message === 'auth') { toast('Google: hay que volver a conectar'); if (manual) { gOcupado = false; gLogin(false); return null; } }
+      else toast('Google: ' + e.message);
+    }
+    gOcupado = false;
+    commit(); render();
+    return R;
+  }
+  function googleHTML() {
+    var cid = gClientId(), p = pref(), con = gValido(), t = gTok();
+    var h = '<h2>Google (calendarios y contactos)</h2><div class="card pad col"><p class="muted">Trae a tu agenda, solo para ti, los calendarios y contactos de tu cuenta de Google. Va en un sentido: lo que cambies en Google llega aquí; lo que cambies aquí no se escribe en Google.</p>';
+    if (!window.MIAGENDA_GOOGLE_CLIENT_ID) h += '<label class="f">ID de cliente de Google<input id="gcid" value="' + esc(dev.gClientId || '') + '" placeholder="xxxx.apps.googleusercontent.com"><span class="hint">Lo obtienes en Google Cloud (ver guía). También se puede poner en config.js.</span></label>';
+    h += '<div class="btns">' + (con ? '<button class="btn pri" data-a="gSyncYa">Sincronizar ahora</button><button class="btn" data-a="gCargarCals">Elegir calendarios</button><button class="btn" data-a="gDesconectar">Desconectar</button>' : '<button class="btn pri" data-a="gConectar"' + (cid || !window.MIAGENDA_GOOGLE_CLIENT_ID ? '' : ' disabled') + '>' + (t ? 'Volver a conectar con Google' : 'Conectar con Google') + '</button>') + '</div>';
+    var gm = p.gmap || {}, n = Object.keys(gm).filter(function (k) { return gm[k] && gm[k] !== 'no'; }).length;
+    h += '<p class="muted">' + n + ' calendario' + (n === 1 ? '' : 's') + ' de Google sincronizado' + (n === 1 ? '' : 's') + (p.gLast ? ' · última vez: ' + new Date(p.gLast).toLocaleString('es-ES') : '') + '</p>';
+    h += '<label class="f inline"><input type="checkbox" id="gCon"' + (p.gContactos ? ' checked' : '') + '>Sincronizar también mis contactos de Google</label>';
+    h += '<label class="f">Rama para los contactos nuevos de Google<select id="gRama">' + RAMAS.map(function (o) { return '<option value="' + o[0] + '"' + ((p.gRama || 'personal') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label></div>';
+    return h;
+  }
+
+  /* ================= cambio 8: compras ================= */
+  function prioDe(i, L) { return i.d.prio || ((L && L.d.tipoTienda === 'online') ? 'deseado' : 'urgente'); }
+  function precioNum(v) { return parseFloat(String(v || '').replace(/[^\d,.-]/g, '').replace(',', '.')) || 0; }
+  function nombreDeEnlace(u) {
+    try {
+      var url = new URL(u), parts = url.pathname.split('/').filter(Boolean), i = parts.indexOf('dp');
+      if (i < 0) i = parts.indexOf('gp');
+      var slug = i > 0 ? parts[i - 1] : '';
+      if (!slug || /^(dp|gp|product|-)$/i.test(slug)) return '';
+      return decodeURIComponent(slug).replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+    } catch (e) { return ''; }
+  }
+  function selectorCompras() {
+    var f = S.cfiltro || 'todos';
+    return '<div class="seg" role="group" aria-label="Filtrar artículos">' + [['urgente', 'Urgente'], ['deseado', 'Deseados'], ['todos', 'Todos']].map(function (x) { return '<button data-a="cfiltro" data-v="' + x[0] + '" class="' + (f === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>';
+  }
+  V.compras = function () {
+    var f = S.cfiltro || 'todos', L = S.lista && item(S.lista);
+    if (L && !L.d.papelera) {
+      var online = L.d.tipoTienda === 'online', todosIts = itemsDe(L.id), items = todosIts.filter(function (i) { return f === 'todos' || prioDe(i, L) === f; });
+      var cats = CATS.concat(Object.keys(catsPropias()).sort()), pend = todosIts.filter(function (i) { return !i.d.ok; });
+      var total = pend.reduce(function (s, i) { return s + precioNum(i.d.precio); }, 0);
+      var h = '<div class="btns"><button class="btn" data-a="cerrarLista">‹ Listas</button><button class="btn" data-a="editar" data-id="' + L.id + '">' + (L.sh && L.sh.owner !== ME.id ? 'Detalles' : 'Editar / compartir') + '</button><button class="btn" data-a="limpiarLista">Quitar comprados</button></div><h2>' + esc(L.d.nombre) + (L.d.tienda ? ' · ' + esc(L.d.tienda) : '') + ' <span class="tag">' + (online ? 'online' : 'tienda física') + '</span></h2>' + (L.sh ? '<p class="muted">Lista compartida' + etiquetaComp(L) + '. Todos los miembros pueden añadir y marcar.</p>' : '') + selectorCompras();
+      h += '<form class="card addrow" data-additem="1"><label class="sr" for="itT">Artículo</label><input id="itT" placeholder="Artículo">' +
+        (online ? '<label class="sr" for="itL">Enlace</label><input id="itL" type="url" class="full" placeholder="Enlace al artículo (pega aquí el de Amazon…)">' : '') +
+        '<label class="sr" for="itC">Categoría</label><select id="itC">' + cats.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '<option value="__otra">Otra…</option></select><label class="sr" for="itCn">Nueva categoría</label><input id="itCn" placeholder="Nombre de la categoría nueva" hidden>' +
+        '<label class="sr" for="itQ">Cantidad</label><input id="itQ" placeholder="Cant." class="qty"><label class="sr" for="itP">Precio</label><input id="itP" placeholder="Precio €" class="qty" inputmode="decimal">' +
+        '<label class="sr" for="itU">Prioridad</label><select id="itU" class="qty2"><option value="urgente"' + (online ? '' : ' selected') + '>Urgente</option><option value="deseado"' + (online ? ' selected' : '') + '>Deseado</option></select><button class="btn pri" type="submit">Añadir</button></form>';
+      if (total) h += '<p class="muted">Total pendiente: <b>' + total.toFixed(2).replace('.', ',') + ' €</b></p>';
+      var orden = cats.concat(['Otros']); items.forEach(function (i) { if (orden.indexOf(i.d.cat || 'Otros') < 0) orden.push(i.d.cat); });
+      orden.filter(function (c, k) { return orden.indexOf(c) === k; }).forEach(function (c) {
+        var g = items.filter(function (i) { return (i.d.cat || 'Otros') === c; });
+        if (!g.length) return;
+        h += '<div class="grp">' + esc(c) + '</div><div class="card list">' + g.map(function (i) {
+          var urg = prioDe(i, L) === 'urgente';
+          var sub = [i.d.cant, i.d.precio ? precioNum(i.d.precio).toFixed(2).replace('.', ',') + ' €' : '', L.sh ? 'añadido por ' + nombre(i.rec.by) : ''].filter(Boolean).join(' · ');
+          return '<div class="item wrap' + (i.d.ok ? ' done' : '') + '"><input type="checkbox" class="chk" data-a="itemOk" data-id="' + i.id + '"' + (i.d.ok ? ' checked' : '') + ' aria-label="Comprado"><span class="tx click" data-a="itemEdit" data-id="' + i.id + '"><b>' + esc(i.d.t) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span>' +
+            '<button class="btn sm' + (urg ? ' urg' : '') + '" data-a="itemPrio" data-id="' + i.id + '" aria-label="Cambiar prioridad">' + (urg ? 'Urgente' : 'Deseado') + '</button>' +
+            (i.d.link ? '<a class="btn sm" href="' + esc(i.d.link) + '" target="_blank" rel="noopener">Abrir</a>' : '') + '<button class="btn sm del" data-a="itemDel" data-id="' + i.id + '" aria-label="Quitar">✕</button></div>';
+        }).join('') + '</div>';
+      });
+      if (!items.length) h += '<div class="card empty">' + (f === 'todos' ? 'Lista vacía. Añade el primer artículo.' : 'No hay artículos ' + (f === 'urgente' ? 'urgentes' : 'deseados') + '.') + '</div>';
+      return h;
+    }
+    var listas = todos('lista').filter(function (x) { return porRama(x.d); });
+    var datos = listas.map(function (x) { var its = itemsDe(x.id).filter(function (i) { return !i.d.ok; }); return { x: x, n: its.length, u: its.filter(function (i) { return prioDe(i, x) === 'urgente'; }).length, de: its.filter(function (i) { return prioDe(i, x) === 'deseado'; }).length }; })
+      .filter(function (o) { return f === 'todos' || (f === 'urgente' ? o.u : o.de); });
+    return bandeja() + selectorCompras() + '<div class="btns"><button class="btn" data-a="ir" data-v="gestionar">Gestionar categorías</button></div><div class="card list">' + (datos.length ? datos.map(function (o) {
+      var x = o.x;
+      return '<div class="item click" data-a="abrirLista" data-id="' + x.id + '"><span class="tx"><b>' + esc(x.d.nombre) + (x.sh ? ' <span class="tag">compartida</span>' : '') + (x.d.tipoTienda === 'online' ? ' <span class="tag">online</span>' : '') + '</b><small>' + (x.d.tienda ? esc(x.d.tienda) + ' · ' : '') + o.n + ' pendientes' + (o.u ? ' · ' + o.u + ' urgente' + (o.u > 1 ? 's' : '') : '') + etiquetaComp(x) + '</small></span>›</div>';
+    }).join('') : '<div class="empty">' + (f === 'todos' ? 'Sin listas. Pulsa + para crear una (una por tienda) y compártela con la familia.' : 'Ninguna lista con artículos ' + (f === 'urgente' ? 'urgentes' : 'deseados') + '.') + '</div>') + '</div>';
+  };
+
+  /* ================= cambios 10 y 11: temas, tamaño de letra y reloj ================= */
+  var TEMAS = [['claro', 'Claro'], ['oscuro', 'Oscuro'], ['oscuro-ac', 'Oscuro alto contraste'], ['claro-ac', 'Claro alto contraste'], ['auto', 'Automático (como el móvil o el PC)']];
+  var LETRAS = [['normal', 'Normal'], ['grande', 'Grande'], ['muygrande', 'Muy grande']];
+  var mqOscuro = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function aplicarTema() {
+    var p = (ME && me()) ? pref() : {}, t = p.tema || dev.temaUltimo || 'claro', l = p.letra || dev.letraUltima || 'normal';
+    if (ME && me() && (dev.temaUltimo !== t || dev.letraUltima !== l)) { dev.temaUltimo = t; dev.letraUltima = l; saveDev(); }
+    var ef = t === 'auto' ? (mqOscuro && mqOscuro.matches ? 'oscuro' : 'claro') : t, h = document.documentElement;
+    if (ef === 'claro') h.removeAttribute('data-t'); else h.setAttribute('data-t', ef);
+    if (l === 'normal') h.removeAttribute('data-letra'); else h.setAttribute('data-letra', l);
+    var mt = document.querySelector('meta[name="theme-color"]'); if (mt) mt.setAttribute('content', { oscuro: '#121417', 'oscuro-ac': '#000000', 'claro-ac': '#9A3412' }[ef] || '#C2410C');
+  }
+  if (mqOscuro && mqOscuro.addEventListener) mqOscuro.addEventListener('change', function () { aplicarTema(); });
+  function relojHTML(corto) { var d = new Date(); return '<b>' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</b><small>' + (corto ? DIAS[d.getDay()] + ' ' + d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3) : DIAS[d.getDay()] + ', ' + d.getDate() + ' de ' + MESES[d.getMonth()]) + '</small>'; }
+  function tick() {
+    var r = $('#reloj'), logged = !!(ME && me());
+    if (r) { r.hidden = !logged; if (logged) r.innerHTML = relojHTML(true); }
+    var n = document.querySelector('.reloj-nav'); if (n) n.innerHTML = relojHTML();
+  }
+  function apariencia() {
+    var p = pref();
+    return '<h2>Apariencia</h2><div class="card pad col"><label class="f">Tema<select id="temaSel">' + TEMAS.map(function (o) { return '<option value="' + o[0] + '"' + ((p.tema || 'claro') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>' +
+      '<label class="f">Tamaño de letra<select id="letraSel">' + LETRAS.map(function (o) { return '<option value="' + o[0] + '"' + ((p.letra || 'normal') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label><span class="hint">Se guarda para ti y se aplica en todos tus dispositivos.</span></div>';
   }
 
   /* ================= alta de usuarios y sesiones ================= */
@@ -1152,6 +1510,7 @@
   async function entrar(actor, recordar) {
     ME = { id: actor.id, mk: actor.mk, sk: actor.sk }; D = {}; SK = {}; RAW = {}; C.resetCache(); dev.join = null;
     dev.session = actor.id; saveDev();
+    dev.recordado = dev.recordado || {}; dev.recordado[actor.id] = !!recordar; saveDev();
     if (recordar) await C.keyStore.put(actor.id, { mk: actor.mk, sk: actor.sk }); else await C.keyStore.del(actor.id).catch(function () {});
     S.view = 'inicio'; S.q = ''; S.lista = null; S.chat = null; S.loginUser = null; location.hash = 'inicio';
     await refresh(); render();
@@ -1341,13 +1700,96 @@
     nuevoCal: function () { abrirForm('cal'); },
     editar: function (d) { var it = item(d.id); if (!it) return; if (it.d.k === 'contacto') abrirContacto(it); else abrirForm(it.d.k, it); },
     contactar: function (d) { return contactar(d.id, d.v); },
+    irHoy: function () { today = new Date(); S.sel = ymd(today); S.month = new Date(today.getFullYear(), today.getMonth(), 1); S.q = ''; $('#q').value = ''; if (location.hash !== '#calendario') location.hash = 'calendario'; else render(); },
+    gesRen: async function (d) {
+      var nuevo = prompt('Nuevo nombre para «' + d.v + '»:', d.v); if (!nuevo || !nuevo.trim() || nuevo.trim() === d.v) return;
+      var n = await renombrarEn(d.t, d.v, nuevo.trim()); commit(); render(); toast('Cambiado en ' + n + ' elemento' + (n === 1 ? '' : 's'));
+    },
+    gesDel: async function (d) {
+      if (!confirm('¿Borrar «' + d.v + '»? ' + ({ grupo: 'Sus contactos quedarán sin grupo.', cat: 'Sus artículos pasarán a «Otros».' }[d.t] || 'Esos campos pasarán a llamarse «Otro».'))) return;
+      var n = await renombrarEn(d.t, d.v, ''); commit(); render(); toast('Quitado de ' + n + ' elemento' + (n === 1 ? '' : 's'));
+    },
+    calMostrar: async function () { var ids = calSelIds(); for (var i = 0; i < ids.length; i++) { var c = item(ids[i]); await putObj(ME, c.id, Object.assign({}, c.d, { activo: true }), ''); } commit(); render(); },
+    calOcultar: async function () { var ids = calSelIds(); for (var i = 0; i < ids.length; i++) { var c = item(ids[i]); await putObj(ME, c.id, Object.assign({}, c.d, { activo: false }), ''); } commit(); render(); },
+    calMover: async function () {
+      var ids = calSelIds(); if (!ids.length) return;
+      var dests = cals().filter(function (c) { return ids.indexOf(c.id) < 0; });
+      if (!dests.length) return alert('Deja sin marcar el calendario de destino.');
+      var r = await dialogo('<h3>Mover eventos</h3><p>Los eventos de ' + ids.map(function (id) { return '«' + esc(item(id).d.nombre) + '»'; }).join(', ') + ' pasan al calendario que elijas. Los calendarios de origen se quedan.</p>' +
+        '<label class="f">Mover a<select name="dest" id="movDest">' + dests.map(function (c) { return '<option value="' + c.id + '" data-cumple="' + (c.d.tipo === 'cumple' ? 1 : 0) + '">' + esc(c.d.nombre) + '</option>'; }).join('') + '</select></label>' +
+        '<label class="f inline"><input type="checkbox" name="anual" id="movAnual">Ponerlos como «se repite cada año» (cumpleaños, santos)</label><div class="btns"><button class="btn pri" value="ok">Mover</button><button class="btn" value="cancel" formnovalidate>Cancelar</button></div>',
+        function (frm) { var sel = frm.querySelector('#movDest'), chk = frm.querySelector('#movAnual'), upd = function () { chk.checked = sel.selectedOptions[0].dataset.cumple === '1'; }; upd(); frm.onchange = function (e) { if (e.target === sel) upd(); }; });
+      if (!r) return;
+      var R = await moverEventos(ids, r.get('dest'), !!r.get('anual')); if (!R) return;
+      commit(); render(); toast(R.mov + ' eventos movidos' + (R.del ? ', ' + R.del + ' duplicados borrados' : ''));
+      await preguntarVacios(ids); S.calSel = {}; commit(); render();
+    },
+    calJuntar: async function () {
+      var ids = calSelIds(); if (ids.length < 2) return alert('Marca al menos dos calendarios para juntarlos.');
+      var autos = ids.filter(function (id) { return /^auto-/.test(item(id).d.tipo || ''); });
+      var r = await dialogo('<h3>Juntar ' + ids.length + ' calendarios</h3><label class="f">Quedan todos los eventos en<select name="dest" id="junDest">' + ids.map(function (id) { return '<option value="' + id + '">' + esc(item(id).d.nombre) + '</option>'; }).join('') + '<option value="__nuevo">Calendario nuevo</option></select></label>' +
+        '<div class="row2" id="junNuevo" hidden><label class="f">Nombre<input name="nombre" placeholder="Nombre del calendario"></label><label class="f">Color<input name="color" type="color" value="' + COLORES[cals().length % COLORES.length] + '"></label></div>' +
+        '<p class="muted">Los demás calendarios se vacían y van a la papelera.' + (autos.length ? ' Los automáticos que se borren dejan de actualizarse en diciembre.' : '') + '</p><div class="btns"><button class="btn pri" value="ok">Juntar</button><button class="btn" value="cancel" formnovalidate>Cancelar</button></div>',
+        function (frm) { frm.onchange = function (e) { if (e.target.id === 'junDest') frm.querySelector('#junNuevo').hidden = e.target.value !== '__nuevo'; }; });
+      if (!r) return;
+      var dest = r.get('dest');
+      if (dest === '__nuevo') dest = await putObj(ME, null, { k: 'cal', nombre: (r.get('nombre') || 'Calendario').trim(), color: r.get('color') || COLORES[0], rama: 'ambas', activo: true, tipo: 'normal' }, '');
+      var otros = ids.filter(function (id) { return id !== dest; });
+      var R = await moverEventos(otros, dest, false); if (!R) return;
+      await borrarCals(otros); S.calSel = {}; commit(); render(); toast('Juntados: ' + R.mov + ' eventos' + (R.del ? ', ' + R.del + ' duplicados borrados' : ''));
+    },
+    calVaciar: async function () {
+      var ids = calSelIds(); if (!ids.length) return;
+      var n = 0; ids.forEach(function (id) { n += privados('evento').filter(function (e) { return e.d.cal === id; }).length; });
+      if (!confirm('¿Vaciar ' + ids.length + ' calendario' + (ids.length > 1 ? 's' : '') + '? Sus ' + n + ' eventos van a la papelera; los calendarios se quedan.')) return;
+      for (var i = 0; i < ids.length; i++) { var evs = privados('evento').filter(function (e) { return e.d.cal === ids[i]; }); if (evs.length) await aPapelera(evs, 'vaciado de «' + item(ids[i]).d.nombre + '»'); }
+      commit(); render(); toast('Calendarios vaciados');
+      await preguntarVacios(ids); S.calSel = {}; commit(); render();
+    },
+    calBorrar: async function () {
+      var ids = calSelIds(); if (!ids.length) return;
+      if (!confirm('¿Mover a la papelera ' + ids.length + ' calendario' + (ids.length > 1 ? 's' : '') + ' con todos sus eventos?')) return;
+      if (await borrarCals(ids)) { S.calSel = {}; commit(); render(); toast('Movidos a la papelera'); }
+    },
+    gConectar: function () { var i = $('#gcid'); if (i) { dev.gClientId = i.value.trim(); saveDev(); } gLogin(false); },
+    gDesconectar: function () { localStorage.removeItem('miagenda.gtok.' + ME.id); render(); toast('Google desconectado en este dispositivo'); },
+    gSyncYa: async function () { toast('Sincronizando con Google…'); var R = await gSync(true); if (R) await dialogo('<h3>Google sincronizado</h3><ul><li>' + (R.imp) + ' eventos nuevos, ' + R.ev + ' actualizados, ' + R.evDel + ' quitados</li><li>' + R.conNew + ' contactos nuevos, ' + R.con + ' actualizados, ' + R.conDel + ' quitados</li>' + (R.dup ? '<li>' + R.dup + ' duplicados no importados</li>' : '') + '</ul><div class="btns"><button class="btn pri" value="ok">Aceptar</button></div>'); },
+    gCargarCals: async function () {
+      var lista;
+      try { lista = await gCalendarios(); } catch (e) { if (e.message === 'auth') return gLogin(false); return alert('Google: ' + e.message); }
+      var p = pref(), gm = p.gmap || {};
+      var r = await dialogo('<h3>Calendarios de Google</h3><p class="muted">Elige, para cada uno, en qué calendario de tu agenda caen sus eventos.</p><div class="card list">' + lista.map(function (g, i) {
+        var v = gm[g.id] || 'no';
+        return '<div class="item wrap"><span class="dot" style="background:' + esc(g.color) + '"></span><span class="tx"><b>' + esc(g.nombre) + '</b></span><select name="g' + i + '" class="mini" aria-label="Destino"><option value="no"' + (v === 'no' ? ' selected' : '') + '>No sincronizar</option><option value="__nuevo"' + (v === '__nuevo' ? ' selected' : '') + '>Calendario nuevo «' + esc(g.nombre) + '»</option>' + cals().map(function (c) { return '<option value="' + c.id + '"' + (v === c.id ? ' selected' : '') + '>En ' + esc(c.d.nombre) + '</option>'; }).join('') + '</select></div>';
+      }).join('') + '</div><div class="btns"><button class="btn pri" value="ok">Guardar y sincronizar</button><button class="btn" value="cancel" formnovalidate>Cancelar</button></div>');
+      if (!r) return;
+      var nm = Object.assign({}, p.gnombres || {}), col = Object.assign({}, p.gcolores || {});
+      lista.forEach(function (g, i) { gm[g.id] = r.get('g' + i); nm[g.id] = g.nombre; col[g.id] = g.color; });
+      await setPref({ gmap: gm, gnombres: nm, gcolores: col });
+      A.gSyncYa();
+    },
+    cfiltro: function (d) { S.cfiltro = d.v; render(); },
+    itemPrio: async function (d) { var i = item(d.id), L = item(i.d.lista); await putObj(ME, i.id, Object.assign({}, i.d, { prio: prioDe(i, L) === 'urgente' ? 'deseado' : 'urgente' }), i.rec.share); commit(); render(); },
+    itemEdit: async function (d) {
+      var i = item(d.id), L = item(i.d.lista), online = L && L.d.tipoTienda === 'online', cats = CATS.concat(Object.keys(catsPropias()).sort());
+      var r = await dialogo('<h3>Artículo</h3><label class="f">Nombre<input name="t" value="' + esc(i.d.t) + '" required></label>' + (online || i.d.link ? '<label class="f">Enlace<input name="link" type="url" value="' + esc(i.d.link || '') + '"></label>' : '') +
+        '<label class="f">Categoría<select name="cat" id="ieCat">' + cats.map(function (c) { return '<option' + (c === (i.d.cat || 'Otros') ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '<option value="__otra">Otra…</option></select></label><label class="f" id="ieCatN" hidden>Categoría nueva<input name="catN"></label>' +
+        '<div class="row2"><label class="f">Cantidad<input name="cant" value="' + esc(i.d.cant || '') + '"></label><label class="f">Precio €<input name="precio" inputmode="decimal" value="' + esc(i.d.precio || '') + '"></label></div>' +
+        '<label class="f">Prioridad<select name="prio"><option value="urgente"' + (prioDe(i, L) === 'urgente' ? ' selected' : '') + '>Urgente</option><option value="deseado"' + (prioDe(i, L) === 'deseado' ? ' selected' : '') + '>Deseado</option></select></label><div class="btns"><button class="btn pri" value="ok">Guardar</button><button class="btn" value="cancel" formnovalidate>Cancelar</button></div>',
+        function (frm) { frm.onchange = function (e) { if (e.target.id === 'ieCat') frm.querySelector('#ieCatN').hidden = e.target.value !== '__otra'; }; });
+      if (!r) return;
+      var cat = r.get('cat') === '__otra' ? ((r.get('catN') || '').trim() || 'Otros') : r.get('cat');
+      await putObj(ME, i.id, Object.assign({}, i.d, { t: (r.get('t') || '').trim() || i.d.t, link: r.get('link') != null ? (r.get('link') || '').trim() : i.d.link, cat: cat, cant: (r.get('cant') || '').trim(), precio: (r.get('precio') || '').trim(), prio: r.get('prio') }), i.rec.share);
+      commit(); render();
+    },
+
     verPasados: function () { S.verPasados = !S.verPasados; render(); },
     restaurar: async function (d) { var l = enPapelera().filter(function (it) { return it.d.papelera.g === d.v; }); for (var i = 0; i < l.length; i++) { var nd = Object.assign({}, l[i].d); delete nd.papelera; await putObj(ME, l[i].id, nd, ''); } commit(); render(); toast('Restaurado'); },
     eliminarDef: function (d) { if (!confirm('¿Eliminar definitivamente? No se podrá recuperar.')) return; enPapelera().filter(function (it) { return it.d.papelera.g === d.v; }).forEach(function (it) { tomb(it.id); }); commit(); render(); toast('Eliminado'); },
     vaciarPapelera: function () { var l = enPapelera(); if (!confirm('¿Vaciar la papelera? Se eliminan definitivamente ' + l.length + ' elementos.')) return; l.forEach(function (it) { tomb(it.id); }); commit(); render(); toast('Papelera vaciada'); },
     activarFestivos: async function () {
       var y = today.getFullYear();
-      await setPref({ festivosAuto: true, festivosYear: y + 1 });
+      await setPref({ festivosAuto: true, festivosYear: y + 1, autoOff: {} });
       toast('Descargando festivos…');
       var r1 = await actualizarFestivos(y), r2 = await actualizarFestivos(y + 1);
       var R = { imp: r1.R.imp + r2.R.imp, dup: r1.R.dup + r2.R.dup, sust: r1.R.sust + r2.R.sust, pas: r1.R.pas + r2.R.pas, ya: r1.R.ya + r2.R.ya };
@@ -1561,8 +2003,9 @@
         await defaultCals(act); commit(); await entrar(act, $('#acRec').checked); toast('¡Bienvenido/a, ' + v.nombre + '!');
       }
       if (t.dataset.additem) {
-        var L = item(S.lista), tx = $('#itT').value.trim(); if (!tx) return;
-        await putObj(ME, null, { k: 'item', lista: L.id, t: tx, cat: $('#itC').value, cant: $('#itQ').value.trim(), ok: false }, L.sh ? L.sh.id : '');
+        var L = item(S.lista), lk = $('#itL') ? $('#itL').value.trim() : '', tx = $('#itT').value.trim() || nombreDeEnlace(lk); if (!tx) { if (lk) alert('Escribe el nombre del artículo.'); return; }
+        var cat = $('#itC').value === '__otra' ? ($('#itCn').value.trim() || 'Otros') : $('#itC').value;
+        await putObj(ME, null, { k: 'item', lista: L.id, t: tx, cat: cat, cant: $('#itQ').value.trim(), precio: $('#itP').value.trim(), prio: $('#itU').value, link: lk, ok: false }, L.sh ? L.sh.id : '');
         commit(); render(); $('#itT').focus();
       }
       if (t.dataset.msg) {
@@ -1588,21 +2031,38 @@
       }
     } catch (err) { console.error(err); alert(err.message); }
   });
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.classList && t.classList.contains('calchk')) { S.calSel = S.calSel || {}; if (t.checked) S.calSel[t.dataset.cid] = 1; else delete S.calSel[t.dataset.cid]; var y = window.scrollY; render(); window.scrollTo(0, y); }
+    if (t.id === 'calTodos') { S.calSel = {}; if (t.checked) cals().forEach(function (c) { if (c.d.tipo !== 'cumple') S.calSel[c.id] = 1; }); render(); }
+    if (t.id === 'gCon') setPref({ gContactos: t.checked }).then(function () { toast(t.checked ? 'Se sincronizarán tus contactos de Google' : 'Contactos de Google: desactivado'); });
+    if (t.id === 'gRama') setPref({ gRama: t.value });
+    if (t.id === 'temaSel') setPref({ tema: t.value }).then(function () { render(); toast('Tema cambiado'); });
+    if (t.id === 'letraSel') setPref({ letra: t.value }).then(function () { render(); });
+    if (t.id === 'itC') { var n = $('#itCn'); if (n) { n.hidden = t.value !== '__otra'; if (!n.hidden) n.focus(); } }
+  });
+  document.addEventListener('input', function (e) { if (e.target.id === 'itL') { var tt = $('#itT'); if (tt && !tt.value.trim()) tt.value = nombreDeEnlace(e.target.value); } });
   document.addEventListener('change', function (e) { if (e.target.id === 'plazoSel') setPref({ plazoPapelera: +e.target.value }).then(function () { render(); toast('Plazo de la papelera: ' + plazoTxt(+e.target.value)); }); });
   $('#q').addEventListener('input', function (e) { S.q = e.target.value.trim(); render(); });
-  window.addEventListener('hashchange', function () { S.view = location.hash.slice(1) || 'inicio'; S.q = ''; $('#q').value = ''; if (S.view !== 'compras') S.lista = null; if (S.view !== 'mensajes') S.chat = null; if (S.view !== 'calendario' && S.view !== 'calendarios') S.verPasados = false; render(); window.scrollTo(0, 0); });
+  window.addEventListener('hashchange', function () { S.view = location.hash.slice(1) || 'inicio'; S.q = ''; $('#q').value = ''; if (S.view !== 'compras') S.lista = null; if (S.view !== 'mensajes') S.chat = null; if (S.view !== 'calendario' && S.view !== 'calendarios') S.verPasados = false; if (S.view !== 'calendarios') S.calSel = {}; render(); window.scrollTo(0, 0); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { doSync(); revisarAvisos(); } });
 
   /* ================= arranque ================= */
   (async function () {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
     if (cleanup()) persist();
+    var gRet = gRetorno();
     if (/^#unirse=/.test(location.hash)) { usarEnlace(location.hash); history.replaceState(null, '', window.Sync.redirectUri()); }
     var v = location.hash.slice(1); if (v) S.view = v;
     if (dev.session && U(dev.session)) {
       try { var k = await C.keyStore.get(dev.session); if (k && k.mk) { ME = { id: dev.session, mk: k.mk, sk: k.sk }; await refresh(); } } catch (e) {}
     }
     render();
+    if (gRet) {
+      if (gRet.ok && ME && ME.id === gRet.uid) { toast('Google conectado'); setTimeout(function () { A.gSyncYa(); }, 800); }
+      else if (gRet.error && !gRet.silent) alert('Google: ' + gRet.error);
+      else if (gRet.error) toast('Google: vuelve a conectar en Ajustes');
+    }
     avisarNuevos.ready = true;
     try {
       var r = await window.Sync.handleRedirect();
@@ -1610,6 +2070,7 @@
     } catch (e) { alert('No se pudo conectar: ' + e.message); }
     doSync();
     setInterval(revisarAvisos, 30000); revisarAvisos();
+    setInterval(tick, 15000);
     setInterval(function () { if (!document.hidden) doSync(); }, 60000);
   })();
 })();

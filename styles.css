@@ -149,3 +149,74 @@ h1{font-size:19px;white-space:nowrap}
 .stickybar{position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));z-index:8;background:#fff;border-top:1px solid var(--line);padding:10px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 @media (min-width:900px){.stickybar{left:220px;bottom:0}}
 .btn[disabled]{opacity:.45}
+/* --- cambios 5-8 --- */
+.chkpad{width:22px;flex:none}
+.stickybar.wrap{flex-wrap:wrap}
+.stickybar .btns{margin:0}
+.btn.urg{background:#FEF2F2;border-color:#FECACA;color:#991B1B}
+.addrow .full{flex:1 1 100%}
+.addrow .qty2{flex:0 1 120px}
+.gnew{margin-top:6px}
+/* --- cambio 9: calendario más legible --- */
+.day{font-size:17px;font-weight:800;min-height:52px}
+.dots{height:9px;gap:3px}
+.dots i{width:9px;height:9px;border-radius:5px}
+.calhead .btn{min-width:56px;min-height:48px;font-size:26px;font-weight:700;justify-content:center}
+.calhead b{font-size:20px}
+/* --- cambio 11: reloj --- */
+.reloj{border:0;background:transparent;display:flex;flex-direction:column;align-items:flex-start;line-height:1.1;padding:2px 4px;min-height:44px;justify-content:center;color:var(--ink)}
+.reloj b{font-size:20px;font-weight:800}
+.reloj small{font-size:12px;color:var(--muted);white-space:nowrap}
+.reloj-nav{display:none}
+@media (min-width:900px){
+ #reloj{display:none!important}
+ .reloj-nav{display:block;margin-top:auto;padding:16px 18px 20px;border-top:1px solid var(--line);cursor:pointer;color:var(--ink)}
+ .reloj-nav b{display:block;font-size:26px;font-weight:800}
+ .reloj-nav small{font-size:13px;color:var(--muted)}
+}
+@media (max-width:899px){ body:not(.out) #titulo{display:none} }
+/* --- cambio 10: temas --- */
+:root{--onacc:#fff;--soft:#E7E9ED;--field:#fff}
+.seg{background:var(--soft)}
+.btn.pri,.fab,.day.sel,.md.sel{color:var(--onacc)}
+html[data-t="oscuro"],html[data-t="oscuro-ac"]{color-scheme:dark}
+html[data-t="oscuro"]{--bg:#121417;--card:#1C1F24;--ink:#F3F4F6;--muted:#AEB6C2;--line:#30353D;--acc:#FB923C;--onacc:#111;--soft:#262A31;--field:#15181C}
+html[data-t="oscuro"] body.trabajo{--acc:#60A5FA}
+html[data-t="oscuro-ac"]{--bg:#000;--card:#000;--ink:#fff;--muted:#E5E7EB;--line:#8B95A3;--acc:#FDBA74;--onacc:#000;--soft:#1A1A1A;--field:#000}
+html[data-t="oscuro-ac"] body.trabajo{--acc:#93C5FD}
+html[data-t="claro-ac"]{--bg:#fff;--card:#fff;--ink:#000;--muted:#1F2937;--line:#111827;--acc:#9A3412;--onacc:#fff;--soft:#E5E7EB;--field:#fff}
+html[data-t="claro-ac"] body.trabajo{--acc:#1E3A8A}
+html[data-t="claro-ac"] .card,html[data-t="claro-ac"] .btn,html[data-t="claro-ac"] .chip,html[data-t="claro-ac"] .search,html[data-t="oscuro-ac"] .card,html[data-t="oscuro-ac"] .btn,html[data-t="oscuro-ac"] .chip,html[data-t="oscuro-ac"] .search{border-width:2px}
+html[data-t^="oscuro"] body,html[data-t^="claro-ac"] body{background:var(--bg);color:var(--ink)}
+html[data-t] .top{background:var(--bg)}
+html[data-t] .nav,html[data-t] .card,html[data-t] .btn,html[data-t] .chip,html[data-t] .search,html[data-t] .sync,html[data-t] dialog,html[data-t] .ubtn,html[data-t] .loginbox,html[data-t] .mmes,html[data-t] .stickybar,html[data-t] .bub,html[data-t] .mods span.box{background:var(--card);color:var(--ink);border-color:var(--line)}
+html[data-t] .btn.pri{background:var(--acc);border-color:var(--acc);color:var(--onacc)}
+html[data-t] .seg button.on{background:var(--card);color:var(--acc)}
+html[data-t] .seg button{color:var(--muted)}
+html[data-t] .f input,html[data-t] .f select,html[data-t] .f textarea,html[data-t] .addrow input,html[data-t] .addrow select,html[data-t] .mini,html[data-t] .pin input,html[data-t] .search input{background:var(--field);color:var(--ink);border-color:var(--line)}
+html[data-t] .item{border-color:var(--line)}
+html[data-t] .muted,html[data-t] .item small,html[data-t] .grid .wd,html[data-t] .mgrid .wd,html[data-t] .empty,html[data-t] .f .hint,html[data-t] .nav a{color:var(--muted)}
+html[data-t] .nav a.on{color:var(--acc)}
+html[data-t] .grp,html[data-t] #frm h4{color:var(--muted)}
+html[data-t] .day,html[data-t] .md,html[data-t] .mods a,html[data-t] .who,html[data-t] h1,html[data-t] h2,html[data-t] h3{color:var(--ink)}
+html[data-t] .day.sel{background:var(--acc);color:var(--onacc)}
+html[data-t] .day.out{color:var(--muted);opacity:.6}
+html[data-t] .md.sel{background:var(--acc);color:var(--onacc)}
+html[data-t^="oscuro"] .note{background:#2A2216;border-color:#6B4E1E;color:#FDE7C7}
+html[data-t^="oscuro"] .safe{background:#10261B;border-color:#1F5135;color:#C7F0D8}
+html[data-t^="oscuro"] .tag,html[data-t^="oscuro"] code,html[data-t^="oscuro"] .bigcode{background:#2B3038;color:var(--ink)}
+html[data-t^="oscuro"] .bub.mio{background:#3A2A1C;border-color:#6B4E1E}
+html[data-t^="oscuro"] body.trabajo .bub.mio{background:#1B2B44;border-color:#2F4E7A}
+html[data-t^="oscuro"] .sync.ok{background:#10261B;border-color:#1F5135;color:#86EFAC}
+html[data-t^="oscuro"] .sync.err{background:#2B1515;border-color:#7F1D1D;color:#FCA5A5}
+html[data-t^="oscuro"] .btn.del{color:#FCA5A5}
+html[data-t^="oscuro"] .btn.urg{background:#2B1515;border-color:#7F1D1D;color:#FCA5A5}
+html[data-t^="oscuro"] .md.ya{background:#3B1414;color:#FCA5A5}
+html[data-t^="oscuro"] .card.danger,html[data-t^="oscuro"] .danger{border-color:#7F1D1D}
+html[data-t^="oscuro"] .item b,html[data-t^="oscuro"] .tx b{color:var(--ink)}
+/* 10.4: colores de calendario más claros sobre fondo oscuro */
+html[data-t^="oscuro"] .dot,html[data-t^="oscuro"] .dots i,html[data-t^="oscuro"] .bar,html[data-t^="oscuro"] .avatar{filter:brightness(1.35) saturate(1.1)}
+html[data-t="claro-ac"] .note,html[data-t="claro-ac"] .safe{border-width:2px;color:#000}
+/* 10.3: tamaño de letra */
+html[data-letra="grande"] body{zoom:1.12}
+html[data-letra="muygrande"] body{zoom:1.25}
