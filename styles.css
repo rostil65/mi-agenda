@@ -220,3 +220,66 @@ html[data-t="claro-ac"] .note,html[data-t="claro-ac"] .safe{border-width:2px;col
 /* 10.3: tamaño de letra */
 html[data-letra="grande"] body{zoom:1.12}
 html[data-letra="muygrande"] body{zoom:1.25}
+
+/* --- cambio 12: menú del PC más ancho y reloj grande --- */
+@media (min-width:900px){
+ body{padding-left:330px}
+ .nav{width:330px}
+ .stickybar{left:330px}
+ .reloj-nav{text-align:center;padding:18px 0 22px;overflow:hidden}
+ .reloj-nav .rh{display:block;font-size:78px;line-height:1;font-weight:800;transform:scaleX(.667);transform-origin:center;letter-spacing:-1px;margin:4px 0 10px;font-variant-numeric:tabular-nums}
+ .reloj-nav .rl{display:flex;flex-direction:column;align-items:center;line-height:1.15;font-weight:700;color:var(--ink)}
+ .reloj-nav .rl span{display:block;white-space:nowrap}
+}
+/* --- cambio 13: letra del menú del PC al doble --- */
+@media (min-width:900px){
+ .nav{overflow-y:auto}
+ .nav a{font-size:28px;gap:14px;padding:8px 18px;min-height:56px}
+ .nav a svg{width:32px;height:32px}
+ .nb{font-size:14px;min-width:24px;height:24px;border-radius:12px}
+}
+/* --- cambio 14: calendario del PC --- */
+.lateral{display:none}
+.day .ttl{display:none}
+.vistas{margin:8px 0 4px}
+@media (min-width:900px){
+ body.conlateral{padding-right:330px}
+ body.conlateral .lateral{display:flex;flex-direction:column;gap:8px;position:fixed;top:0;right:0;bottom:0;width:330px;box-sizing:border-box;background:var(--card);border-left:1px solid var(--line);overflow-y:auto;padding:16px 14px;z-index:5;color:var(--ink)}
+ body.conlateral .fab{right:362px!important}
+ body.conlateral .cal-diaslist{display:none}
+ .lateral h3{font-size:16px;margin:14px 0 4px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+ .lev{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;background:transparent;border:0;border-left:5px solid var(--line);padding:8px 10px;border-radius:6px;color:var(--ink);cursor:pointer}
+ .lev:hover{background:var(--soft)}
+ .lev b{font-size:20px;line-height:1.2}
+ .lev small{font-size:13px;color:var(--muted)}
+ .ltar{display:flex;align-items:center;gap:6px}
+ .ltar .lev{border-left-color:var(--acc)}
+ .mesgrid .day{min-height:78px;font-size:26px;justify-content:flex-start;padding-top:6px;overflow:hidden}
+ .mesgrid .day .dots{display:none}
+ .mesgrid .day .ttl{display:flex;flex-direction:column;gap:2px;width:100%;padding:0 4px}
+ .mesgrid .day .ttl i{font-style:normal;font-size:12px;font-weight:600;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:3px solid;padding-left:4px;line-height:1.3;color:var(--ink);background:var(--soft);border-radius:3px}
+ .mesgrid .day.sel .ttl i{background:rgba(255,255,255,.25);color:inherit}
+ .mesgrid .day .ttl i.mas{border-left:0;background:transparent;color:var(--muted)}
+ .semana{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:8px;min-height:560px}
+ .scol{display:flex;flex-direction:column;gap:4px;border-radius:10px;padding:4px;min-width:0}
+ .scol.sel{background:var(--soft)}
+ .shead{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;padding:6px 0;color:var(--ink);cursor:pointer}
+ .shead small{font-size:13px;color:var(--muted);text-transform:capitalize}
+ .shead b{font-size:30px;font-weight:800}
+ .scol.today .shead b{color:var(--acc)}
+ .sev{display:flex;flex-direction:column;align-items:flex-start;text-align:left;background:var(--soft);border:0;border-left:4px solid;border-radius:6px;padding:6px 8px;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;overflow-wrap:anywhere}
+ .sev small{font-size:12px;color:var(--muted);font-weight:500}
+ .diav{padding:6px 10px}
+ .hrow{display:flex;gap:10px;min-height:54px;border-bottom:1px solid var(--line);align-items:flex-start;padding:4px 0}
+ .hrow .hl{flex:0 0 70px;font-size:15px;font-weight:700;color:var(--muted);padding-top:6px}
+ .hrow .hev{flex:1;display:flex;flex-wrap:wrap;gap:6px}
+ .hrow.todo .hl{font-size:13px}
+ .anio{margin-bottom:24px}
+ .anio .md{min-height:34px;font-size:14px}
+ .anio .md.con{background:color-mix(in srgb,var(--c) 30%,transparent);color:var(--ink)}
+ .anio .md.hoy{outline:2px solid var(--acc)}
+ .anio .md.sel{background:var(--acc);color:var(--onacc)}
+}
+.seg.vistas{grid-template-columns:repeat(4,1fr)}
+.lateral .seg{grid-template-columns:repeat(2,1fr)}
+#frm .seg{grid-template-columns:repeat(2,1fr);margin-bottom:6px}

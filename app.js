@@ -271,22 +271,94 @@
     return h;
   };
   V.calendario = function () {
-    var m = S.month, y = m.getFullYear(), mo = m.getMonth();
-    var h = '<div class="calhead"><button class="btn" data-a="mes" data-v="-1" aria-label="Mes anterior">‹</button><b>' + MESES[mo][0].toUpperCase() + MESES[mo].slice(1) + ' ' + y + '</b><button class="btn" data-a="mes" data-v="1" aria-label="Mes siguiente">›</button></div>';
+    var pc = esPC(), vista = pc ? (dev.calVista || 'mes') : 'mes', sel = parseYmd(S.sel), titulo, h = '';
+    if (vista === 'mes') { var m0 = S.month; titulo = MESES[m0.getMonth()][0].toUpperCase() + MESES[m0.getMonth()].slice(1) + ' ' + m0.getFullYear(); }
+    else if (vista === 'semana') { var lu = lunesDe(sel), dom = new Date(lu.getFullYear(), lu.getMonth(), lu.getDate() + 6); titulo = lu.getDate() + ' ' + MESES[lu.getMonth()].slice(0, 3) + ' – ' + dom.getDate() + ' ' + MESES[dom.getMonth()].slice(0, 3) + ' ' + dom.getFullYear(); }
+    else if (vista === 'dia') titulo = fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + ' ' + sel.getFullYear();
+    else titulo = String(sel.getFullYear());
+    if (pc) h += '<div class="seg vistas" role="group" aria-label="Vista del calendario">' + [['dia', 'Día'], ['semana', 'Semana'], ['mes', 'Mes'], ['anio', 'Año']].map(function (x) { return '<button data-a="calVista" data-v="' + x[0] + '" class="' + (vista === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>';
+    h += '<div class="calhead"><button class="btn" data-a="mes" data-v="-1" aria-label="Anterior">‹</button><b>' + esc(titulo) + '</b><button class="btn" data-a="mes" data-v="1" aria-label="Siguiente">›</button></div>';
     h += '<div class="chips">' + cals().map(function (c) {
       return '<button class="chip' + (c.d.activo === false ? ' off' : '') + '" data-a="calActivo" data-id="' + c.id + '" aria-pressed="' + (c.d.activo !== false) + '"><span class="dot" style="background:' + c.d.color + '"></span>' + esc(c.d.nombre) + '</button>';
-    }).join('') + '<button class="chip" data-a="ir" data-v="calendarios">Gestionar calendarios</button><button class="chip" data-a="verPasados" aria-pressed="' + !!S.verPasados + '">' + (S.verPasados ? 'Ocultar eventos pasados' : 'Ver eventos pasados') + '</button></div>' + (S.verPasados ? '<p class="muted">Mostrando también los eventos pasados hasta que salgas del calendario. Para reactivar uno, ábrelo y cámbiale la fecha y la hora.</p>' : '') + '<div class="card"><div class="grid">';
-    ['L', 'M', 'X', 'J', 'V', 'S', 'D'].forEach(function (w) { h += '<span class="wd">' + w + '</span>'; });
-    var start = new Date(y, mo, 1 - ((new Date(y, mo, 1).getDay() + 6) % 7));
-    for (var i = 0; i < 42; i++) {
-      var d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i), ds = ymd(d);
-      if (i === 35 && d.getMonth() !== mo) break;
-      var l = delDia(ds), cls = 'day' + (d.getMonth() !== mo ? ' out' : '') + (ds === ymd(today) ? ' today' : '') + (ds === S.sel ? ' sel' : '');
-      h += '<button class="' + cls + '" data-a="dia" data-v="' + ds + '"><span>' + d.getDate() + '</span><span class="dots">' + l.slice(0, 3).map(function (o) { return '<i style="background:' + o.c.d.color + '"></i>'; }).join('') + '</span></button>';
+    }).join('') + '<button class="chip" data-a="ir" data-v="calendarios">Gestionar calendarios</button><button class="chip" data-a="verPasados" aria-pressed="' + !!S.verPasados + '">' + (S.verPasados ? 'Ocultar eventos pasados' : 'Ver eventos pasados') + '</button></div>' + (S.verPasados ? '<p class="muted">Mostrando también los eventos pasados hasta que salgas del calendario. Para reactivar uno, ábrelo y cámbiale la fecha y la hora.</p>' : '');
+    var hoy = ymd(today);
+    if (vista === 'mes') {
+      var m = S.month, y = m.getFullYear(), mo = m.getMonth();
+      h += '<div class="card"><div class="grid mesgrid">';
+      ['L', 'M', 'X', 'J', 'V', 'S', 'D'].forEach(function (w) { h += '<span class="wd">' + w + '</span>'; });
+      var start = new Date(y, mo, 1 - ((new Date(y, mo, 1).getDay() + 6) % 7));
+      for (var i = 0; i < 42; i++) {
+        var d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i), ds = ymd(d);
+        if (i === 35 && d.getMonth() !== mo) break;
+        var l = delDia(ds), cls = 'day' + (d.getMonth() !== mo ? ' out' : '') + (ds === hoy ? ' today' : '') + (ds === S.sel ? ' sel' : '');
+        h += '<button class="' + cls + '" data-a="dia" data-v="' + ds + '"><span>' + d.getDate() + '</span><span class="dots">' + l.slice(0, 3).map(function (o) { return '<i style="background:' + o.c.d.color + '"></i>'; }).join('') + '</span>' +
+          (pc ? '<span class="ttl">' + l.slice(0, 3).map(function (o) { return '<i style="border-left-color:' + o.c.d.color + '">' + esc(o.it.d.titulo) + '</i>'; }).join('') + (l.length > 3 ? '<i class="mas">+' + (l.length - 3) + '</i>' : '') + '</span>' : '') + '</button>';
+      }
+      h += '</div></div>';
+    } else if (vista === 'semana') {
+      var lu2 = lunesDe(sel);
+      h += '<div class="card semana">';
+      for (var k = 0; k < 7; k++) {
+        var dd = new Date(lu2.getFullYear(), lu2.getMonth(), lu2.getDate() + k), ds2 = ymd(dd), l2 = delDia(ds2);
+        h += '<div class="scol' + (ds2 === S.sel ? ' sel' : '') + (ds2 === hoy ? ' today' : '') + '"><button class="shead" data-a="dia" data-v="' + ds2 + '"><small>' + DIAS[dd.getDay()].slice(0, 3) + '</small><b>' + dd.getDate() + '</b></button>' +
+          l2.map(function (o) { return '<button class="sev" data-a="editar" data-id="' + o.it.id + '" style="border-left-color:' + o.c.d.color + '"><small>' + (o.it.d.hora || 'Todo el día') + '</small>' + esc(o.it.d.titulo) + '</button>'; }).join('') + '</div>';
+      }
+      h += '</div>';
+    } else if (vista === 'dia') {
+      var ld = delDia(S.sel), todoDia = ld.filter(function (o) { return !o.it.d.hora; }), conHora = ld.filter(function (o) { return o.it.d.hora; });
+      var hIni = Math.min.apply(null, [7].concat(conHora.map(function (o) { return +o.it.d.hora.slice(0, 2); })));
+      h += '<div class="card diav">' + (todoDia.length ? '<div class="hrow todo"><span class="hl">Todo el día</span><div class="hev">' + todoDia.map(function (o) { return '<button class="sev" data-a="editar" data-id="' + o.it.id + '" style="border-left-color:' + o.c.d.color + '">' + esc(o.it.d.titulo) + '</button>'; }).join('') + '</div></div>' : '');
+      for (var hh = hIni; hh <= 23; hh++) {
+        var en = conHora.filter(function (o) { return +o.it.d.hora.slice(0, 2) === hh; });
+        h += '<div class="hrow"><span class="hl">' + pad(hh) + ':00</span><div class="hev">' + en.map(function (o) { return '<button class="sev" data-a="editar" data-id="' + o.it.id + '" style="border-left-color:' + o.c.d.color + '"><small>' + o.it.d.hora + '</small>' + esc(o.it.d.titulo) + '</button>'; }).join('') + '</div></div>';
+      }
+      h += '</div>';
+    } else {
+      var ya = sel.getFullYear();
+      h += '<div class="meses anio">';
+      for (var mm = 0; mm < 12; mm++) {
+        h += '<div class="mmes"><b>' + MESES[mm][0].toUpperCase() + MESES[mm].slice(1) + '</b><div class="mgrid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(function (w) { return '<span class="wd">' + w + '</span>'; }).join('');
+        var off = (new Date(ya, mm, 1).getDay() + 6) % 7, nd = new Date(ya, mm + 1, 0).getDate();
+        for (var b = 0; b < off; b++) h += '<span></span>';
+        for (var dn = 1; dn <= nd; dn++) {
+          var ds3 = ya + '-' + pad(mm + 1) + '-' + pad(dn), l3 = delDia(ds3), col = l3.length ? l3[0].c.d.color : '';
+          h += '<button class="md' + (ds3 === hoy ? ' hoy' : '') + (ds3 === S.sel ? ' sel' : '') + (l3.length ? ' con' : '') + '" data-a="diaVista" data-v="' + ds3 + '"' + (col ? ' style="--c:' + col + '"' : '') + ' aria-label="' + dn + ' de ' + MESES[mm] + (l3.length ? ', ' + l3.length + ' eventos' : '') + '">' + dn + '</button>';
+        }
+        h += '</div></div>';
+      }
+      h += '</div>';
     }
     var sl = delDia(S.sel);
-    return h + '</div></div><h2>' + fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + '</h2><div class="card list">' + (sl.length ? sl.map(function (o) { return itemEvento(o); }).join('') : '<div class="empty">Sin eventos este día.</div>') + '</div>';
+    return h + '<div class="cal-diaslist"><h2>' + fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + '</h2><div class="card list">' + (sl.length ? sl.map(function (o) { return itemEvento(o); }).join('') : '<div class="empty">Sin eventos este día.</div>') + '</div></div>';
   };
+  function esPC() { return !!(window.matchMedia && window.matchMedia('(min-width: 900px)').matches); }
+  function lunesDe(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)); }
+  /* Columna derecha del PC: Eventos | Tareas */
+  function lateralHTML() {
+    var t = dev.latSel || 'eventos', h = '<div class="seg" role="group" aria-label="Mostrar">' + [['eventos', 'Eventos'], ['tareas', 'Tareas']].map(function (x) { return '<button data-a="latSel" data-v="' + x[0] + '" class="' + (t === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>';
+    var s0 = parseYmd(S.sel);
+    if (t === 'eventos') {
+      var l = delDia(S.sel);
+      h += '<h3>' + fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + '</h3>' + (l.length ? l.map(function (o) { return latEvento(o); }).join('') : '<p class="muted">Sin eventos este día.</p>');
+      var prox = [];
+      for (var i = 1; i <= 7; i++) { var ds = ymd(new Date(s0.getFullYear(), s0.getMonth(), s0.getDate() + i)); delDia(ds).forEach(function (o) { prox.push({ o: o, ds: ds }); }); }
+      h += '<h3>Próximos 7 días</h3>' + (prox.length ? prox.map(function (x) { return latEvento(x.o, x.ds); }).join('') : '<p class="muted">Nada en los próximos 7 días.</p>');
+    } else {
+      var fin = ymd(new Date(s0.getFullYear(), s0.getMonth(), s0.getDate() + 7));
+      var ts = privados('tarea').filter(function (x) { return !x.d.hecho && porRama(x.d) && x.d.vence && x.d.vence <= fin; }).sort(porVence);
+      var deDia = ts.filter(function (x) { return x.d.vence === S.sel; }), venc = ts.filter(function (x) { return x.d.vence < S.sel; }), luego = ts.filter(function (x) { return x.d.vence > S.sel; });
+      h += (venc.length ? '<h3>Vencidas</h3>' + venc.map(function (x) { return latTarea(x); }).join('') : '') + '<h3>' + fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + '</h3>' + (deDia.length ? deDia.map(function (x) { return latTarea(x); }).join('') : '<p class="muted">Sin tareas este día.</p>') +
+        '<h3>Próximos 7 días</h3>' + (luego.length ? luego.map(function (x) { return latTarea(x); }).join('') : '<p class="muted">Sin tareas en los próximos 7 días.</p>');
+    }
+    return h;
+  }
+  function latEvento(o, ds) {
+    return '<button class="lev" data-a="editar" data-id="' + o.it.id + '" style="border-left-color:' + o.c.d.color + '"><b>' + esc(o.it.d.titulo) + '</b><small>' + (ds ? fechaLarga(ds) + ' · ' : '') + (o.it.d.hora || 'Todo el día') + ' · ' + esc(o.c.d.nombre) + '</small></button>';
+  }
+  function latTarea(t) {
+    return '<div class="ltar"><input type="checkbox" class="chk" data-a="hecho" data-id="' + t.id + '" aria-label="Hecha"><button class="lev" data-a="editar" data-id="' + t.id + '"><b>' + esc(t.d.titulo) + '</b><small>' + fechaLarga(t.d.vence) + ' · ' + (t.d.prioridad || 'media') + '</small></button></div>';
+  }
+
   V.calendarios = function () {
     var h = '<div class="btns"><button class="btn" data-a="ir" data-v="calendario">‹ Calendario</button><button class="btn pri" data-a="nuevoCal">Nuevo calendario</button></div><h2>Mis calendarios</h2><p class="muted">Son los mismos en las ramas Personal y Trabajo. Toca uno para cambiarle el nombre o el color. Marca varios para moverlos, juntarlos, vaciarlos, borrarlos, mostrarlos u ocultarlos.</p>';
     var sel = S.calSel || (S.calSel = {}), selIds = calSelIds(), marcables = cals().filter(function (c) { return c.d.tipo !== 'cumple'; });
@@ -474,7 +546,7 @@
     aplicarTema();
     var logged = !!(ME && me());
     document.body.classList.toggle('out', !logged);
-    if (!logged) { $('#main').innerHTML = pantallaEntrada(); $('#nav').innerHTML = ''; $('#who').innerHTML = ''; tick(); return; }
+    if (!logged) { $('#main').innerHTML = pantallaEntrada(); $('#nav').innerHTML = ''; $('#who').innerHTML = ''; $('#lateral').innerHTML = ''; document.body.classList.remove('conlateral'); tick(); return; }
     if (!V[S.view] || (S.view === 'admin' && !isAdmin())) S.view = 'inicio';
     var u = me();
     document.body.classList.toggle('trabajo', rama() === 'trabajo');
@@ -489,6 +561,8 @@
     }).join('') + '<div class="reloj-nav" data-a="irHoy" role="button" tabindex="0" aria-label="Ir a hoy">' + relojHTML() + '</div>';
     tick();
     $('#main').innerHTML = S.q ? buscar(S.q) : V[S.view]();
+    var conLat = S.view === 'calendario' && !S.q; document.body.classList.toggle('conlateral', conLat);
+    $('#lateral').innerHTML = conLat ? lateralHTML() : '';
     $('#fab').hidden = ['ajustes', 'admin', 'mensajes', 'calendarios', 'papelera', 'duplicados', 'marcar', 'revisarNombres', 'gestionar'].indexOf(S.view) >= 0 && !S.q;
     if (S.view === 'mensajes' && S.chat) { var ch = document.querySelector('.chat'); if (ch) ch.scrollTop = ch.scrollHeight; }
   }
@@ -509,14 +583,15 @@
   };
   var NUEVO = { inicio: 'evento', calendario: 'evento', tareas: 'tarea', contactos: 'contacto', notas: 'nota', accesos: 'acceso', compras: 'lista' };
 
-  function abrirForm(k, it) {
+  function abrirForm(k, it, opts) {
+    opts = opts || {};
     var def = FORMS[k], nuevo = !it;
-    var d = it ? Object.assign({}, it.d) : { k: k, rama: rama() === 'todo' ? 'personal' : rama(), fecha: S.sel, prioridad: 'media', repetir: 'no', activo: true, color: COLORES[cals().length % COLORES.length] };
+    var d = it ? Object.assign({}, it.d) : { k: k, rama: rama() === 'todo' ? 'personal' : rama(), fecha: S.sel, vence: k === 'tarea' && opts.switchET ? S.sel : '', prioridad: 'media', repetir: 'no', activo: true, color: COLORES[cals().length % COLORES.length] };
     if (k === 'evento' && !d.cal) { var c0 = calOpts().filter(function (o) { var c = item(o[0]); return c && porRama(c.d); })[0] || calOpts()[0]; d.cal = c0 ? c0[0] : ''; }
     if (k === 'evento' && it && it.sh) d.cal = (acc(it.sh.id, ME.id) || {}).cal || d.cal;
     var esMio = !it || !it.sh || it.sh.owner === ME.id;
     $('#frm').onclick = null; $('#frm').onchange = null;
-    var h = '<h3>' + (nuevo ? 'Nuevo: ' : '') + def[0] + '</h3>';
+    var h = (opts.switchET && nuevo ? '<div class="seg" role="group" aria-label="Tipo de registro"><button type="button" data-et="evento" class="' + (k === 'evento' ? 'on' : '') + '">Evento</button><button type="button" data-et="tarea" class="' + (k === 'tarea' ? 'on' : '') + '">Tarea</button></div>' : '') + '<h3>' + (nuevo ? 'Nuevo: ' : '') + def[0] + '</h3>';
     if (k === 'evento' && it && it.d.fecha < hoyStr() && (!it.d.repetir || it.d.repetir === 'no')) h += '<p class="note">Evento pasado (oculto). Para reactivarlo, cámbiale la fecha y la hora y guarda.</p>';
     if (k === 'tarea' && it && it.d.hecho) h += '<p class="note">Tarea hecha (oculta). Para reactivarla, desmarca «Hecha» y ponle un nuevo plazo.</p>';
     if (it && it.sh) h += '<p class="note">' + (it.sh.owner === ME.id ? 'Compartido con: ' + esc(miembrosTxt(it.sh)) : 'Compartido por ' + esc(nombre(it.sh.owner)) + '. Los cambios se ven en todos los miembros.') + '</p>';
@@ -536,6 +611,7 @@
     h += '<div class="btns">' + b + '</div>';
     var frm = $('#frm');
     frm.innerHTML = h;
+    if (opts.switchET && nuevo) frm.onclick = function (e) { var b = e.target.closest('[data-et]'); if (b && b.dataset.et !== k) { var tt = (frm.querySelector('[name=titulo]') || {}).value || ''; abrirForm(b.dataset.et, null, opts); var ni = $('#frm [name=titulo]'); if (ni) { ni.value = tt; ni.focus(); } } };
     frm.onsubmit = async function (e) {
       if (e.submitter && e.submitter.value === 'cancel') return;
       e.preventDefault();
@@ -547,7 +623,7 @@
       if (it && it.sh) await putObj(ME, it.id, nd, it.sh.id); else await putObj(ME, it ? it.id : null, nd, '');
       $('#dlg').close(); commit(); render(); toast('Guardado');
     };
-    $('#dlg').showModal();
+    if (!$('#dlg').open) $('#dlg').showModal();
   }
   /* Elegir miembros de la familia */
   function elegirUsuarios(titulo, yaIds, cb) {
@@ -1482,11 +1558,25 @@
     var mt = document.querySelector('meta[name="theme-color"]'); if (mt) mt.setAttribute('content', { oscuro: '#121417', 'oscuro-ac': '#000000', 'claro-ac': '#9A3412' }[ef] || '#C2410C');
   }
   if (mqOscuro && mqOscuro.addEventListener) mqOscuro.addEventListener('change', function () { aplicarTema(); });
-  function relojHTML(corto) { var d = new Date(); return '<b>' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</b><small>' + (corto ? DIAS[d.getDay()] + ' ' + d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3) : DIAS[d.getDay()] + ', ' + d.getDate() + ' de ' + MESES[d.getMonth()]) + '</small>'; }
+  function relojHTML(corto) {
+    var d = new Date(), hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    if (corto) return '<b>' + hm + '</b><small>' + DIAS[d.getDay()] + ' ' + d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3) + '</small>';
+    return '<b class="rh">' + hm + '</b><span class="rl"><span>' + DIAS[d.getDay()] + '</span><span>' + d.getDate() + ' de ' + MESES[d.getMonth()] + '</span></span>';
+  }
+  /* PC: el día de la semana y la fecha ocupan el 80 % del ancho del menú, las dos con la misma letra */
+  function ajustarReloj() {
+    var n = document.querySelector('.reloj-nav'); if (!n || !n.offsetWidth) return;
+    var rl = n.querySelector('.rl'); if (!rl) return;
+    rl.style.fontSize = '100px';
+    var w = Math.max.apply(null, Array.from(rl.children).map(function (x) { return x.scrollWidth; }));
+    if (w) rl.style.fontSize = Math.max(10, Math.floor(100 * n.clientWidth * 0.8 / w)) + 'px';
+  }
+  var eraPC = esPC();
+  window.addEventListener('resize', function () { ajustarReloj(); var p = esPC(); if (eraPC !== null && p !== eraPC && ME) render(); eraPC = p; });
   function tick() {
     var r = $('#reloj'), logged = !!(ME && me());
     if (r) { r.hidden = !logged; if (logged) r.innerHTML = relojHTML(true); }
-    var n = document.querySelector('.reloj-nav'); if (n) n.innerHTML = relojHTML();
+    var n = document.querySelector('.reloj-nav'); if (n) { n.innerHTML = relojHTML(); ajustarReloj(); }
   }
   function apariencia() {
     var p = pref();
@@ -1693,10 +1783,18 @@
   var A = {
     ir: function (d) { location.hash = d.v; },
     rama: function (d) { dev.rama[ME.id] = d.v; saveDev(); render(); },
-    mes: function (d) { S.month = new Date(S.month.getFullYear(), S.month.getMonth() + (+d.v), 1); render(); },
+    mes: function (d) {
+      var v = esPC() ? (dev.calVista || 'mes') : 'mes', n = +d.v, s0 = parseYmd(S.sel);
+      if (v === 'mes') { S.month = new Date(S.month.getFullYear(), S.month.getMonth() + n, 1); render(); return; }
+      var nd = v === 'semana' ? new Date(s0.getFullYear(), s0.getMonth(), s0.getDate() + 7 * n) : v === 'dia' ? new Date(s0.getFullYear(), s0.getMonth(), s0.getDate() + n) : new Date(s0.getFullYear() + n, s0.getMonth(), Math.min(s0.getDate(), 28));
+      S.sel = ymd(nd); S.month = new Date(nd.getFullYear(), nd.getMonth(), 1); render();
+    },
+    calVista: function (d) { dev.calVista = d.v; saveDev(); var s0 = parseYmd(S.sel); S.month = new Date(s0.getFullYear(), s0.getMonth(), 1); render(); },
+    diaVista: function (d) { S.sel = d.v; var p = parseYmd(d.v); S.month = new Date(p.getFullYear(), p.getMonth(), 1); dev.calVista = 'dia'; saveDev(); render(); },
+    latSel: function (d) { dev.latSel = d.v; saveDev(); render(); },
     dia: function (d) { S.sel = d.v; var p = parseYmd(d.v); if (p.getMonth() !== S.month.getMonth()) S.month = new Date(p.getFullYear(), p.getMonth(), 1); render(); },
     tfiltro: function (d) { S.tfiltro = d.v; render(); },
-    nuevo: function () { var k = NUEVO[S.view] || 'evento'; if (k === 'contacto') abrirContacto(); else abrirForm(k); },
+    nuevo: function () { var k = NUEVO[S.view] || 'evento'; if (k === 'contacto') return abrirContacto(); if (S.view === 'calendario' || S.view === 'inicio') return abrirForm(S.view === 'calendario' && esPC() && dev.latSel === 'tareas' ? 'tarea' : 'evento', null, { switchET: true }); abrirForm(k); },
     nuevoCal: function () { abrirForm('cal'); },
     editar: function (d) { var it = item(d.id); if (!it) return; if (it.d.k === 'contacto') abrirContacto(it); else abrirForm(it.d.k, it); },
     contactar: function (d) { return contactar(d.id, d.v); },
