@@ -336,6 +336,27 @@
     var sl = delDia(S.sel);
     return h + '<div class="cal-diaslist"><h2' + (rojo(S.sel) ? ' class="rojo"' : '') + '>' + fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + '</h2><div class="card list">' + (sl.length ? sl.map(function (o) { return itemEvento(o); }).join('') : '<div class="empty">Sin eventos este día.</div>') + '</div></div>';
   };
+  /* 17.6: en el PC el mes entero cabe en la pantalla, con cualquier tamaño de letra */
+  function ajustarMes() {
+    var g = document.querySelector('.mesgrid'); if (!g || !esPC()) return;
+    var dias = Array.prototype.slice.call(g.querySelectorAll('.day')); if (!dias.length) return;
+    dias.forEach(function (d) { d.style.height = ''; });
+    var z = parseFloat(getComputedStyle(document.body).zoom) || 1, filas = Math.ceil(dias.length / 7);
+    var rg = g.getBoundingClientRect(), r0 = dias[0].getBoundingClientRect();
+    var arriba = r0.top + window.scrollY;                       /* desde lo alto de la página hasta la primera fila */
+    var libre = window.innerHeight - arriba - 28 - 2 * (filas - 1);
+    var alto = Math.min(r0.height, Math.max(44, libre / filas));
+    dias.forEach(function (d) { d.style.height = (alto / z) + 'px'; });
+    dias.forEach(function (d) {
+      var t = d.querySelector('.ttl'); if (!t) return;
+      var it = Array.prototype.slice.call(t.querySelectorAll('i:not(.mas)')), mas = t.querySelector('i.mas'), extra = mas ? +mas.textContent.slice(1) : 0;
+      while (it.length && t.scrollHeight > t.clientHeight + 1) {
+        it.pop().remove(); extra++;
+        if (!mas) { mas = document.createElement('i'); mas.className = 'mas'; t.appendChild(mas); }
+        mas.textContent = '+' + extra;
+      }
+    });
+  }
   function esPC() { return !!(window.matchMedia && window.matchMedia('(min-width: 900px)').matches); }
   function lunesDe(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)); }
   /* Columna derecha del PC: Eventos | Tareas */
@@ -375,7 +396,7 @@
     if (selIds.length) h += '<div class="stickybar wrap"><span>' + selIds.length + ' marcado' + (selIds.length > 1 ? 's' : '') + '</span><div class="btns"><button class="btn sm" data-a="calMover">Mover a</button><button class="btn sm" data-a="calJuntar">Juntar</button><button class="btn sm" data-a="calVaciar">Vaciar todo</button><button class="btn sm del" data-a="calBorrar">Borrar</button><button class="btn sm" data-a="calMostrar">Mostrar</button><button class="btn sm" data-a="calOcultar">Ocultar</button></div></div>';
     var auto = pref().festivosAuto, y = today.getFullYear(), offs = Object.keys(pref().autoOff || {}).filter(function (k) { return (pref().autoOff || {})[k]; });
     h += '<h2>Festivos automáticos</h2><div class="card pad col">' + (auto
-      ? '<p class="muted">Activados: FIESTAS LABORALES (España + Comunidad de Madrid), Festivos Rumanía y Fiestas ortodoxas. Cada diciembre se añade el año siguiente; lo que añadas o corrijas a mano nunca se cambia.</p><div class="row2"><label class="f">Año<select id="festYear"><option>' + y + '</option><option' + (today.getMonth() === 11 ? ' selected' : '') + '>' + (y + 1) + '</option></select></label><div class="btns" style="align-self:end"><button class="btn" data-a="actualizarFestivosYa">Actualizar ahora</button></div></div>' + (offs.length ? '<p class="muted">Hay ' + offs.length + ' calendario' + (offs.length > 1 ? 's' : '') + ' automático' + (offs.length > 1 ? 's' : '') + ' desactivado' + (offs.length > 1 ? 's' : '') + '.</p><div class="btns"><button class="btn" data-a="activarFestivos">Volver a activarlos</button></div>' : '')
+      ? '<p class="muted">Activados: FIESTAS LABORALES (España + Comunidad de Madrid), Festivos Rumanía y Fiestas ortodoxas. Cada diciembre se añade el año siguiente; lo que añadas o corrijas a mano nunca se cambia.</p><div class="row2"><label class="f">Año<select id="festYear"><option>' + y + '</option><option' + (today.getMonth() === 11 ? ' selected' : '') + '>' + (y + 1) + '</option></select></label><div class="btns" style="align-self:end"><button class="btn" data-a="actualizarFestivosYa">Actualizar ahora</button><button class="btn" data-a="revisarFestivos">Revisar festivos</button></div></div>' + (offs.length ? '<p class="muted">Hay ' + offs.length + ' calendario' + (offs.length > 1 ? 's' : '') + ' automático' + (offs.length > 1 ? 's' : '') + ' desactivado' + (offs.length > 1 ? 's' : '') + '.</p><div class="btns"><button class="btn" data-a="activarFestivos">Volver a activarlos</button></div>' : '')
       : '<p class="muted">Crea tres calendarios que se rellenan solos: FIESTAS LABORALES (nacionales de España y Comunidad de Madrid), Festivos Rumanía y Fiestas ortodoxas.</p><div class="btns"><button class="btn pri" data-a="activarFestivos">Activar festivos automáticos</button></div>') +
       '<p class="muted">Festivos de Alcalá de Henares y puentes de tu empresa:</p><div class="btns"><button class="btn" data-a="marcarAnio" data-v="' + (today.getMonth() === 11 ? y + 1 : y) + '">Opción A: añadir festivos del año</button><button class="btn" data-a="opcionB">Opción B: importar el .ics que te haga Claude</button></div></div>';
     h += '<h2>Importar</h2><div class="card pad col"><span class="muted">Archivos .ics de Google Calendar (Configuración › Importar y exportar › Exportar) u otros. Solo se importan los eventos de hoy en adelante (y los que se repiten). Antes te pregunto en qué calendario guardarlos y qué hacer con los duplicados.</span><div class="btns"><button class="btn" data-a="importar" data-v="ics">Importar archivos .ics</button></div>' +
@@ -389,7 +410,7 @@
   }
   V.tareas = function () {
     var f = S.tfiltro, l = privados('tarea').filter(function (t) { return porRama(t.d) && (f === 'todas' || (f === 'pend' ? !t.d.hecho : t.d.hecho)); }).sort(porVence);
-    return '<div class="chips">' + [['pend', 'Pendientes'], ['hechas', 'Hechas (ocultas)'], ['todas', 'Todas']].map(function (x) { return '<button class="chip' + (f === x[0] ? '' : ' off') + '" data-a="tfiltro" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') +
+    return '<div class="chips">' + [['pend', 'Pendientes'], ['hechas', 'Hechas (ocultas)'], ['todas', 'Todas']].map(function (x) { return '<button class="chip' + (f === x[0] ? '' : ' off') + '" aria-pressed="' + (f === x[0]) + '" data-a="tfiltro" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') +
       '</div><div class="card list">' + (l.length ? l.map(itemTarea).join('') : '<div class="empty">No hay tareas aquí.</div>') + '</div>';
   };
   function tel(t) { return String(t || '').replace(/[^\d+]/g, ''); }
@@ -568,6 +589,7 @@
     $('#main').innerHTML = S.q ? buscar(S.q) : V[S.view]();
     var conLat = S.view === 'calendario' && !S.q; document.body.classList.toggle('conlateral', conLat);
     $('#lateral').innerHTML = conLat ? lateralHTML() : '';
+    ajustarMes();
     $('#fab').hidden = ['ajustes', 'admin', 'mensajes', 'calendarios', 'papelera', 'duplicados', 'marcar', 'revisarNombres', 'gestionar'].indexOf(S.view) >= 0 && !S.q;
     if (S.view === 'mensajes' && S.chat) { var ch = document.querySelector('.chat'); if (ch) ch.scrollTop = ch.scrollHeight; }
   }
@@ -1145,11 +1167,25 @@
       return confirm('«' + e.titulo + '»: en tu calendario está el ' + fechaLarga(otro.d.fecha) + ', pero la fuente oficial dice ' + fechaLarga(e.fecha) + '.\n\n¿Añado también el ' + fechaLarga(e.fecha) + '? (Tu fecha no se cambia.)');
     });
   }
+  /* 17.5: en la Comunidad de Madrid, el festivo que cae en domingo se pasa al lunes */
+  function alLunes(l) {
+    var fechas = {}; l.forEach(function (e) { fechas[e.fecha] = 1; });
+    l.slice().forEach(function (e) {
+      if (parseYmd(e.fecha).getDay() !== 0) return;
+      var lu = dmas(parseYmd(e.fecha), 1);
+      if (!fechas[lu]) { l.push({ titulo: e.titulo + ' (se pasa al lunes)', fecha: lu }); fechas[lu] = 1; }
+    });
+    return l.sort(function (a, b) { return a.fecha.localeCompare(b.fecha); });
+  }
+  async function listaLaboral(y) {
+    var es = await nager('ES', y);
+    var lab = es ? es.filter(function (h) { return esPublico(h) && (h.nacional || (h.regiones || []).indexOf('ES-MD') >= 0); }).map(function (h) { return { titulo: nombreES(h, y), fecha: h.fecha }; }) : basicoES(y);
+    return { lab: alLunes(lab), ok: !!es };
+  }
   async function actualizarFestivos(y) {
     var R = { imp: 0, dup: 0, sust: 0, pas: 0, ya: 0 }, avisos = [], hoy = hoyStr();
-    var es = await nager('ES', y), ro = await nager('RO', y);
-    var lab = es ? es.filter(function (h) { return esPublico(h) && (h.nacional || (h.regiones || []).indexOf('ES-MD') >= 0); }).map(function (h) { return { titulo: nombreES(h, y), fecha: h.fecha }; }) : basicoES(y);
-    if (!es) avisos.push('No se pudo conectar con el servicio de festivos de España: se usó la lista básica (nacionales y Madrid). Revísala.');
+    var LL = await listaLaboral(y), ro = await nager('RO', y), lab = LL.lab;
+    if (!LL.ok) avisos.push('No se pudo conectar con el servicio de festivos de España: se usó la lista básica (nacionales y Madrid). Revísala.');
     var rol = ro ? ro.filter(function (h) { return esPublico(h) && h.nacional !== false; }).map(function (h) { return { titulo: nombreRO(h, y), fecha: h.fecha }; }) : basicoRO(y);
     if (!ro) avisos.push('Rumanía: se usó la lista calculada.');
     var off = pref().autoOff || {};
@@ -1555,7 +1591,8 @@
   var LETRAS = [['normal', 'Normal'], ['grande', 'Grande'], ['muygrande', 'Muy grande']];
   var mqOscuro = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   function aplicarTema() {
-    var p = (ME && me()) ? pref() : {}, t = p.tema || dev.temaUltimo || 'claro', l = p.letra || dev.letraUltima || 'normal';
+    /* 17.7: el tema y la letra son de cada dispositivo (si aún no hay, se toma el que tenías guardado) */
+    var p = (ME && me()) ? pref() : {}, t = dev.temaUltimo || p.tema || 'claro', l = dev.letraUltima || p.letra || 'normal';
     if (ME && me() && (dev.temaUltimo !== t || dev.letraUltima !== l)) { dev.temaUltimo = t; dev.letraUltima = l; saveDev(); }
     var ef = t === 'auto' ? (mqOscuro && mqOscuro.matches ? 'oscuro' : 'claro') : t, h = document.documentElement;
     if (ef === 'claro') h.removeAttribute('data-t'); else h.setAttribute('data-t', ef);
@@ -1577,7 +1614,7 @@
     if (w) rl.style.fontSize = Math.max(10, Math.floor(100 * n.clientWidth * 0.8 / w)) + 'px';
   }
   var eraPC = esPC();
-  window.addEventListener('resize', function () { ajustarReloj(); var p = esPC(); if (eraPC !== null && p !== eraPC && ME) render(); eraPC = p; });
+  window.addEventListener('resize', function () { ajustarReloj(); ajustarMes(); var p = esPC(); if (eraPC !== null && p !== eraPC && ME) render(); eraPC = p; });
   function tick() {
     var r = $('#reloj'), logged = !!(ME && me());
     if (r) { r.hidden = !logged; if (logged) r.innerHTML = relojHTML(true); }
@@ -1585,8 +1622,8 @@
   }
   function apariencia() {
     var p = pref();
-    return '<h2>Apariencia</h2><div class="card pad col"><label class="f">Tema<select id="temaSel">' + TEMAS.map(function (o) { return '<option value="' + o[0] + '"' + ((p.tema || 'claro') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>' +
-      '<label class="f">Tamaño de letra<select id="letraSel">' + LETRAS.map(function (o) { return '<option value="' + o[0] + '"' + ((p.letra || 'normal') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label><span class="hint">Se guarda para ti y se aplica en todos tus dispositivos.</span></div>';
+    return '<h2>Apariencia</h2><div class="card pad col"><label class="f">Tema<select id="temaSel">' + TEMAS.map(function (o) { return '<option value="' + o[0] + '"' + ((dev.temaUltimo || p.tema || 'claro') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>' +
+      '<label class="f">Tamaño de letra<select id="letraSel">' + LETRAS.map(function (o) { return '<option value="' + o[0] + '"' + ((dev.letraUltima || p.letra || 'normal') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label><span class="hint">Se guarda solo en este dispositivo: el móvil y el PC pueden tener cada uno el suyo.</span></div>';
   }
 
   /* ================= alta de usuarios y sesiones ================= */
@@ -1903,6 +1940,22 @@
       var r = await actualizarFestivos(y);
       await dialogo(resumenHTML(r.R, 'Festivos de ' + y, r.avisos.map(function (a) { return '<p class="note">' + esc(a) + '</p>'; }).join('')));
     },
+    revisarFestivos: async function () {
+      var y = +(($('#festYear') || {}).value || today.getFullYear()), lab = calAuto('auto-lab'); if (!lab) return;
+      toast('Revisando ' + y + '…');
+      var LL = await listaLaboral(y);
+      var mios = todos('evento').filter(function (e) { var c = calDe(e); return c && c.id === lab.id; });
+      var falta = LL.lab.filter(function (e) { return e.fecha >= hoyStr() && !mios.some(function (m) { return ocurre(m.d, e.fecha); }); });
+      var cab = '<h3>Revisar FIESTAS LABORALES ' + y + '</h3>' + (LL.ok ? '' : '<p class="note">Sin conexión con el servicio oficial: se compara con la lista calculada (nacionales y Madrid).</p>');
+      if (!falta.length) { await dialogo(cab + '<p>Están todos los festivos nacionales y de la Comunidad de Madrid. Los de Alcalá y los puentes los añades con «Añadir festivos del año».</p><div class="btns"><button class="btn pri" value="ok">Vale</button></div>'); return; }
+      var fd = await dialogo(cab + '<p class="muted">Faltan en tu calendario. Marca los que quieras añadir; lo que ya tienes no se cambia.</p><div class="card list">' + falta.map(function (e, i) {
+        return '<label class="item"><input type="checkbox" name="f' + i + '" checked> <span class="tx"><b>' + esc(e.titulo) + '</b><small>' + fechaLarga(e.fecha) + ' ' + y + '</small></span></label>';
+      }).join('') + '</div><div class="btns"><button class="btn pri" value="ok">Añadir marcados</button><button class="btn" value="cancel" formnovalidate>Cancelar</button></div>');
+      if (!fd) return;
+      var n = 0;
+      for (var i = 0; i < falta.length; i++) if (fd.get('f' + i)) { await putObj(ME, null, { k: 'evento', titulo: falta[i].titulo, fecha: falta[i].fecha, hora: '', repetir: 'no', hasta: '', aviso: '', lugar: '', notas: '', origen: 'auto', cal: lab.id }, ''); n++; }
+      commit(); render(); toast(n + ' festivo' + (n === 1 ? '' : 's') + ' añadido' + (n === 1 ? '' : 's'));
+    },
     marcarAnio: function (d) { S.marcarY = +d.v || today.getFullYear(); S.marcados = {}; location.hash = 'marcar'; },
     marcarY: function (d) { S.marcarY = (S.marcarY || today.getFullYear()) + (+d.v); S.marcados = {}; render(); },
     marcarDia: function (d) { S.marcados = S.marcados || {}; if (S.marcados[d.v]) delete S.marcados[d.v]; else S.marcados[d.v] = 1; var y = window.scrollY; render(); window.scrollTo(0, y); },
@@ -2140,8 +2193,8 @@
     if (t.id === 'calTodos') { S.calSel = {}; if (t.checked) cals().forEach(function (c) { if (c.d.tipo !== 'cumple') S.calSel[c.id] = 1; }); render(); }
     if (t.id === 'gCon') setPref({ gContactos: t.checked }).then(function () { toast(t.checked ? 'Se sincronizarán tus contactos de Google' : 'Contactos de Google: desactivado'); });
     if (t.id === 'gRama') setPref({ gRama: t.value });
-    if (t.id === 'temaSel') setPref({ tema: t.value }).then(function () { render(); toast('Tema cambiado'); });
-    if (t.id === 'letraSel') setPref({ letra: t.value }).then(function () { render(); });
+    if (t.id === 'temaSel') { dev.temaUltimo = t.value; saveDev(); render(); toast('Tema cambiado en este dispositivo'); }
+    if (t.id === 'letraSel') { dev.letraUltima = t.value; saveDev(); render(); }
     if (t.id === 'itC') { var n = $('#itCn'); if (n) { n.hidden = t.value !== '__otra'; if (!n.hidden) n.focus(); } }
   });
   document.addEventListener('input', function (e) { if (e.target.id === 'itL') { var tt = $('#itT'); if (tt && !tt.value.trim()) tt.value = nombreDeEnlace(e.target.value); } });
