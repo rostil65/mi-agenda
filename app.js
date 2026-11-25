@@ -239,6 +239,11 @@
     }
     return out.sort(function (x, y) { return (x.it.d.hora || '').localeCompare(y.it.d.hora || ''); });
   }
+  /* cambio 16: fin de semana y FIESTAS LABORALES en rojo */
+  function rojoFn() {
+    var evs = todos('evento').filter(function (it) { var c = calDe(it); return c && c.d.tipo === 'auto-lab'; });
+    return function (ds) { var w = parseYmd(ds).getDay(); return w === 0 || w === 6 || evs.some(function (e) { return ocurre(e.d, ds); }); };
+  }
   function fechaLarga(ds) { var d = parseYmd(ds); return DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
 
   /* ================= pantallas ================= */
@@ -281,16 +286,16 @@
     h += '<div class="chips">' + cals().map(function (c) {
       return '<button class="chip' + (c.d.activo === false ? ' off' : '') + '" data-a="calActivo" data-id="' + c.id + '" aria-pressed="' + (c.d.activo !== false) + '"><span class="dot" style="background:' + c.d.color + '"></span>' + esc(c.d.nombre) + '</button>';
     }).join('') + '<button class="chip" data-a="ir" data-v="calendarios">Gestionar calendarios</button><button class="chip" data-a="verPasados" aria-pressed="' + !!S.verPasados + '">' + (S.verPasados ? 'Ocultar eventos pasados' : 'Ver eventos pasados') + '</button></div>' + (S.verPasados ? '<p class="muted">Mostrando también los eventos pasados hasta que salgas del calendario. Para reactivar uno, ábrelo y cámbiale la fecha y la hora.</p>' : '');
-    var hoy = ymd(today);
+    var hoy = ymd(today), rojo = rojoFn();
     if (vista === 'mes') {
       var m = S.month, y = m.getFullYear(), mo = m.getMonth();
       h += '<div class="card"><div class="grid mesgrid">';
-      ['L', 'M', 'X', 'J', 'V', 'S', 'D'].forEach(function (w) { h += '<span class="wd">' + w + '</span>'; });
+      ['L', 'M', 'X', 'J', 'V', 'S', 'D'].forEach(function (w, i) { h += '<span class="wd' + (i > 4 ? ' fin' : '') + '">' + w + '</span>'; });
       var start = new Date(y, mo, 1 - ((new Date(y, mo, 1).getDay() + 6) % 7));
       for (var i = 0; i < 42; i++) {
         var d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i), ds = ymd(d);
         if (i === 35 && d.getMonth() !== mo) break;
-        var l = delDia(ds), cls = 'day' + (d.getMonth() !== mo ? ' out' : '') + (ds === hoy ? ' today' : '') + (ds === S.sel ? ' sel' : '');
+        var l = delDia(ds), cls = 'day' + (d.getMonth() !== mo ? ' out' : '') + (ds === hoy ? ' today' : '') + (ds === S.sel ? ' sel' : '') + (rojo(ds) ? ' fest' : '');
         h += '<button class="' + cls + '" data-a="dia" data-v="' + ds + '"><span>' + d.getDate() + '</span><span class="dots">' + l.slice(0, 3).map(function (o) { return '<i style="background:' + o.c.d.color + '"></i>'; }).join('') + '</span>' +
           (pc ? '<span class="ttl">' + l.slice(0, 3).map(function (o) { return '<i style="border-left-color:' + o.c.d.color + '">' + esc(o.it.d.titulo) + '</i>'; }).join('') + (l.length > 3 ? '<i class="mas">+' + (l.length - 3) + '</i>' : '') + '</span>' : '') + '</button>';
       }
@@ -300,7 +305,7 @@
       h += '<div class="card semana">';
       for (var k = 0; k < 7; k++) {
         var dd = new Date(lu2.getFullYear(), lu2.getMonth(), lu2.getDate() + k), ds2 = ymd(dd), l2 = delDia(ds2);
-        h += '<div class="scol' + (ds2 === S.sel ? ' sel' : '') + (ds2 === hoy ? ' today' : '') + '"><button class="shead" data-a="dia" data-v="' + ds2 + '"><small>' + DIAS[dd.getDay()].slice(0, 3) + '</small><b>' + dd.getDate() + '</b></button>' +
+        h += '<div class="scol' + (ds2 === S.sel ? ' sel' : '') + (ds2 === hoy ? ' today' : '') + (rojo(ds2) ? ' fest' : '') + '"><button class="shead" data-a="dia" data-v="' + ds2 + '"><small>' + DIAS[dd.getDay()].slice(0, 3) + '</small><b>' + dd.getDate() + '</b></button>' +
           l2.map(function (o) { return '<button class="sev" data-a="editar" data-id="' + o.it.id + '" style="border-left-color:' + o.c.d.color + '"><small>' + (o.it.d.hora || 'Todo el día') + '</small>' + esc(o.it.d.titulo) + '</button>'; }).join('') + '</div>';
       }
       h += '</div>';
@@ -317,19 +322,19 @@
       var ya = sel.getFullYear();
       h += '<div class="meses anio">';
       for (var mm = 0; mm < 12; mm++) {
-        h += '<div class="mmes"><b>' + MESES[mm][0].toUpperCase() + MESES[mm].slice(1) + '</b><div class="mgrid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(function (w) { return '<span class="wd">' + w + '</span>'; }).join('');
+        h += '<div class="mmes"><b>' + MESES[mm][0].toUpperCase() + MESES[mm].slice(1) + '</b><div class="mgrid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(function (w, i) { return '<span class="wd' + (i > 4 ? ' fin' : '') + '">' + w + '</span>'; }).join('');
         var off = (new Date(ya, mm, 1).getDay() + 6) % 7, nd = new Date(ya, mm + 1, 0).getDate();
         for (var b = 0; b < off; b++) h += '<span></span>';
         for (var dn = 1; dn <= nd; dn++) {
           var ds3 = ya + '-' + pad(mm + 1) + '-' + pad(dn), l3 = delDia(ds3), col = l3.length ? l3[0].c.d.color : '';
-          h += '<button class="md' + (ds3 === hoy ? ' hoy' : '') + (ds3 === S.sel ? ' sel' : '') + (l3.length ? ' con' : '') + '" data-a="diaVista" data-v="' + ds3 + '"' + (col ? ' style="--c:' + col + '"' : '') + ' aria-label="' + dn + ' de ' + MESES[mm] + (l3.length ? ', ' + l3.length + ' eventos' : '') + '">' + dn + '</button>';
+          h += '<button class="md' + (ds3 === hoy ? ' hoy' : '') + (ds3 === S.sel ? ' sel' : '') + (l3.length ? ' con' : '') + (rojo(ds3) ? ' fest' : '') + '" data-a="diaVista" data-v="' + ds3 + '"' + (col ? ' style="--c:' + col + '"' : '') + ' aria-label="' + dn + ' de ' + MESES[mm] + (l3.length ? ', ' + l3.length + ' eventos' : '') + '">' + dn + '</button>';
         }
         h += '</div></div>';
       }
       h += '</div>';
     }
     var sl = delDia(S.sel);
-    return h + '<div class="cal-diaslist"><h2>' + fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + '</h2><div class="card list">' + (sl.length ? sl.map(function (o) { return itemEvento(o); }).join('') : '<div class="empty">Sin eventos este día.</div>') + '</div></div>';
+    return h + '<div class="cal-diaslist"><h2' + (rojo(S.sel) ? ' class="rojo"' : '') + '>' + fechaLarga(S.sel).replace(/^./, function (c) { return c.toUpperCase(); }) + '</h2><div class="card list">' + (sl.length ? sl.map(function (o) { return itemEvento(o); }).join('') : '<div class="empty">Sin eventos este día.</div>') + '</div></div>';
   };
   function esPC() { return !!(window.matchMedia && window.matchMedia('(min-width: 900px)').matches); }
   function lunesDe(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)); }
