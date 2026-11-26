@@ -321,3 +321,72 @@ html[data-letra="muygrande"]{--z:1.25}
 :root{--chipon:#E5E7EB}
 html[data-t^="oscuro"]{--chipon:#4B5563}
 html .chip[aria-pressed="true"],html[data-t] .chip[aria-pressed="true"]{background:var(--chipon)}
+/* ===== cambio 18 y puntos 1-10 ===== */
+:root{--naranja:#F97316;--azul:#1D4ED8;--marino:#1E3A8A;--gris-off:#4B5563}
+/* 5: selector de ramas (dos botones, se pueden encender los dos) */
+.ramabar{display:flex;flex-direction:column;gap:10px}
+body.out .ramabar{display:none}
+.seg.ramas{grid-template-columns:repeat(2,1fr)}
+.seg.ramas button{font-size:17px;font-weight:800}
+html .seg.ramas button[data-v="personal"].on,html[data-t] .seg.ramas button[data-v="personal"].on{background:var(--naranja);color:#000}
+html .seg.ramas button[data-v="trabajo"].on,html[data-t] .seg.ramas button[data-v="trabajo"].on{background:var(--azul);color:#fff}
+@media (min-width:900px){
+ .ramabar{flex-direction:row;align-items:center}
+ .seg.ramas{display:inline-grid;flex:0 0 auto}
+ .seg.ramas button{padding:0 22px;min-width:9.5ch;height:40px}
+ .ramabar .search{flex:1 1 auto}
+ body.conmini main,body.conmini .top>*{width:var(--mainw)}
+}
+/* 9: botón + con el color de la rama */
+.fab,html[data-t] .fab{background:#6B7280;color:#fff}
+body.rP .fab{background:var(--naranja);color:#000}
+body.rT .fab{background:var(--azul);color:#fff}
+body.rP.rT .fab{background:linear-gradient(90deg,var(--naranja) 50%,var(--azul) 50%);color:#fff;text-shadow:0 0 3px #000}
+/* 1-3: Gestionar calendarios a la izquierda, Ver eventos pasados a la derecha, mismo tamaño */
+.calbtns{display:flex;justify-content:space-between;gap:8px;margin:6px 0 8px}
+.calbtns .chip{width:13.5em;justify-content:center}
+/* 4: leyenda de calendarios (sin marco; solo se ven los botones) */
+.leyenda{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px}
+.leyfila{display:flex;justify-content:center;gap:0}
+.ley{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 6px;border-radius:16px;font-size:12px;font-weight:600;box-sizing:border-box;overflow:hidden;white-space:nowrap;border:2px solid var(--bg)}
+.ley .lt{overflow:hidden;text-overflow:ellipsis}
+.ley .dot{flex:0 0 auto;box-shadow:0 0 0 1.5px #fff}
+.ley.off{background:var(--gris-off);color:#D1D5DB}
+.ley.p{background:var(--naranja);color:#000}
+.ley.t{background:var(--azul);color:#fff}
+.ley.pt{background:linear-gradient(90deg,var(--naranja) 50%,var(--azul) 50%);color:#fff;text-shadow:0 0 3px #000,0 0 2px #000}
+.ley.n{background:#9CA3AF;color:#000}
+/* 18: Gestionar calendarios, dos columnas de botones (Personal / Trabajo) */
+.calcab{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.vercab,.verbtns{display:inline-grid;grid-template-columns:repeat(2,6.6em);gap:6px;flex:0 0 auto}
+.vercab{margin-right:13px}
+.vercab span{display:block;text-align:center;font-weight:800;font-size:13px;border-radius:8px;padding:4px 0}
+.vercab .vp{border:2px solid var(--naranja);color:var(--naranja)}
+.vercab .vt{border:2px solid var(--azul);color:var(--azul)}
+html[data-t^="oscuro"] .vercab .vt{color:#93C5FD}
+.verbtns .btn{width:100%;padding:0 4px;justify-content:center}
+.verbtns .btn.ver,html[data-t] .verbtns .btn.ver{background:var(--gris-off);color:#fff;border-color:var(--gris-off)}
+.verbtns .btn.ver.p.on,html[data-t] .verbtns .btn.ver.p.on{background:var(--naranja);color:#000;border-color:var(--naranja)}
+.verbtns .btn.ver.t.on,html[data-t] .verbtns .btn.ver.t.on{background:var(--azul);color:#fff;border-color:var(--azul)}
+@media (max-width:899px){.vercab,.verbtns{grid-template-columns:repeat(2,4.9em);gap:4px}.vercab{margin-right:10px}.vercab span{font-size:11px}.verbtns .btn{font-size:12px}}
+/* 6: columna derecha, tres botones que se encienden por separado */
+.lattipos{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px}
+.lattipos button{border:0;border-radius:9px;height:38px;font-weight:700;font-size:13px;background:var(--gris-off);color:#E5E7EB}
+.lattipos .lte.on{background:var(--naranja);color:#000}
+.lattipos .ltr.on{background:var(--marino);color:#fff}
+.lattipos .ltt.on{background:#DC2626;color:#fff}
+/* 7 y 8: mini calendarios */
+.mesbox{position:relative}
+.mini{display:none;position:absolute;top:50%;transform:translateY(-50%);background:#fff;color:#000;border:1px solid var(--line);border-radius:12px;padding:10px 8px;text-align:center;cursor:pointer}
+body.conmini .mini{display:block}
+html[data-t^="oscuro"] .mini{background:#000;color:#fff;border-color:#374151}
+.mini b{display:block;font-size:14px;margin-bottom:6px}
+.mini .mg{display:grid;grid-template-columns:repeat(7,1fr);gap:2px 0;font-size:12px;font-weight:600}
+.mini .mg i{font-style:normal;line-height:22px;height:22px;display:flex;align-items:center;justify-content:center}
+.mini .mg i.wd{font-size:10px;opacity:.7}
+.mini .mg i.fest,.mini .mg i.wd.fin{color:var(--rojo)}
+.mini .mg i.hoy{box-shadow:inset 0 0 0 2px var(--acc);border-radius:50%;width:22px;margin:auto}
+/* 10: día de la semana del reloj */
+.rdia{color:#8A8F98}
+.rdia.rojo{color:var(--rojo)}
+.reloj small .rdia{font-weight:700}

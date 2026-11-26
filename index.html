@@ -18,15 +18,16 @@
     <div class="row"><h1 id="titulo">Mi Agenda</h1><button id="reloj" class="reloj" data-a="irHoy" aria-label="Ir a hoy" hidden></button><span id="who" class="who"></span></div>
     <button id="syncBtn" class="sync" data-a="syncNow" aria-label="Sincronizar ahora"><span id="syncTxt">Sin conectar</span></button>
   </div>
-  <div class="seg" role="group" aria-label="Rama">
-    <button data-a="rama" data-v="personal">Personal</button>
-    <button data-a="rama" data-v="trabajo">Trabajo</button>
-    <button data-a="rama" data-v="todo">Todo</button>
+  <div class="ramabar">
+  <div class="seg ramas" role="group" aria-label="Ramas (se pueden encender las dos)">
+    <button data-a="rama" data-v="personal" aria-pressed="false">Personal</button>
+    <button data-a="rama" data-v="trabajo" aria-pressed="false">Trabajo</button>
   </div>
   <label class="search"><span class="sr">Buscar</span>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5"/></svg>
     <input id="q" type="search" placeholder="Buscar en mis cosas: citas, contactos, notas…" autocomplete="off">
   </label>
+  </div>
 </header>
 <nav id="nav" class="nav" aria-label="Módulos"></nav>
 <main id="main"></main>
