@@ -60,7 +60,7 @@
   async function api(method, path, body, extra) {
     var tok = await getAccess(); if (!tok) throw new Error('Sin conexión con Microsoft');
     var h = Object.assign({ Authorization: 'Bearer ' + tok }, extra || {});
-    if (body && typeof body !== 'string') { h['Content-Type'] = 'application/json'; body = JSON.stringify(body); }
+    if (body && typeof body !== 'string' && !(body instanceof ArrayBuffer) && !ArrayBuffer.isView(body) && !(body instanceof Blob)) { h['Content-Type'] = 'application/json'; body = JSON.stringify(body); }
     return fetch(path.indexOf('http') === 0 ? path : G + path, { method: method, headers: h, body: body, cache: 'no-store' });
   }
 
@@ -161,7 +161,22 @@
     return r.ok || r.status === 404;
   }
 
+  /* Fotos (cambio 19): archivos cifrados aparte, en la subcarpeta "fotos" de la carpeta común. */
+  function blobPath(t, name) { return '/drives/' + t.d + '/items/' + t.i + ':/' + name; }
+  async function putBlob(name, bytes) {
+    var t = target(); if (!t || !(await getAccess())) return false;
+    var r = await api('PUT', blobPath(t, name) + ':/content', bytes, { 'Content-Type': 'application/octet-stream' });
+    return r.ok;
+  }
+  async function getBlob(name) {
+    var t = target(); if (!t || !(await getAccess())) return null;
+    var r = await api('GET', blobPath(t, name) + ':/content');
+    if (!r.ok) return null;
+    return new Uint8Array(await r.arrayBuffer());
+  }
+
   window.Sync = {
+    putBlob: putBlob, getBlob: getBlob,
     login: login, handleRedirect: handleRedirect, sync: sync, merge: merge, redirectUri: redirectUri,
     invite: invite, revoke: revoke, target: target, setTarget: setTarget,
     connected: function () { var t = getJ(TOK_KEY); return !!(t && !t.expired); },
